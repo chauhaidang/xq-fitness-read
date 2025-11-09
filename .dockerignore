@@ -1,0 +1,10 @@
+build
+.gradle
+.git
+.gitignore
+README.md
+.DS_Store
+*.log
+.idea
+.vscode
+target

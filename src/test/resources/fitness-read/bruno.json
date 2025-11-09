@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "fitness-read",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

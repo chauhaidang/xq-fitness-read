@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: XQ Fitness Read Service API
+  description: Read-only service for querying workout routines and related data
+  version: 1.0.0
+  contact:
+    name: XQ Fitness Team
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+paths:
+  /muscle-groups:
+    get:
+      summary: Get all muscle groups
+      description: Retrieves a list of all available muscle groups
+      operationId: getMuscleGroups
+      tags:
+        - Muscle Groups
+      responses:
+        '200':
+          description: Successfully retrieved muscle groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MuscleGroup'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /routines:
+    get:
+      summary: Get all workout routines
+      description: Retrieves a list of all workout routines
+      operationId: getRoutines
+      tags:
+        - Routines
+      parameters:
+        - name: isActive
+          in: query
+          description: Filter by active status
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successfully retrieved routines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutRoutine'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /routines/{routineId}:
+    get:
+      summary: Get a specific workout routine
+      description: Retrieves a workout routine with all its days and sets configuration
+      operationId: getRoutineById
+      tags:
+        - Routines
+      parameters:
+        - name: routineId
+          in: path
+          description: ID of the routine to retrieve
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Successfully retrieved routine
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutRoutineDetail'
+        '404':
+          description: Routine not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /routines/{routineId}/days:
+    get:
+      summary: Get all workout days for a routine
+      description: Retrieves all workout days for a specific routine
+      operationId: getWorkoutDays
+      tags:
+        - Workout Days
+      parameters:
+        - name: routineId
+          in: path
+          description: ID of the routine
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Successfully retrieved workout days
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutDayDetail'
+        '404':
+          description: Routine not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    MuscleGroup:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: "Chest"
+        description:
+          type: string
+          example: "Pectoralis major and minor muscles"
+        createdAt:
+          type: string
+          format: date-time
+
+    WorkoutRoutine:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: "Push Pull Legs"
+        description:
+          type: string
+          example: "3-day split focusing on push, pull, and leg movements"
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WorkoutRoutineDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutRoutine'
+        - type: object
+          properties:
+            workoutDays:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorkoutDayDetail'
+
+    WorkoutDay:
+      type: object
+      required:
+        - id
+        - routineId
+        - dayNumber
+        - dayName
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        routineId:
+          type: integer
+          format: int64
+          example: 1
+        dayNumber:
+          type: integer
+          example: 1
+        dayName:
+          type: string
+          example: "Push Day"
+        notes:
+          type: string
+          example: "Focus on chest and shoulders"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WorkoutDayDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutDay'
+        - type: object
+          properties:
+            sets:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorkoutDaySet'
+
+    WorkoutDaySet:
+      type: object
+      required:
+        - id
+        - workoutDayId
+        - muscleGroup
+        - numberOfSets
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        workoutDayId:
+          type: integer
+          format: int64
+          example: 1
+        muscleGroup:
+          $ref: '#/components/schemas/MuscleGroup'
+        numberOfSets:
+          type: integer
+          minimum: 1
+          example: 4
+        notes:
+          type: string
+          example: "Focus on progressive overload"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: "INTERNAL_ERROR"
+        message:
+          type: string
+          example: "An unexpected error occurred"
+        timestamp:
+          type: string
+          format: date-time

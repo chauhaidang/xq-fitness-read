@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: xq-fitness-read-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/xq_fitness
+    username: xq_user
+    password: xq_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+logging:
+  level:
+    org.springframework.web: INFO
+    com.xqfitness: DEBUG
+    org.hibernate.SQL: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
