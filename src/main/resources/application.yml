@@ -2,9 +2,9 @@ spring:
   application:
     name: xq-fitness-read-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/xq_fitness
-    username: xq_user
-    password: xq_password
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/xq_fitness
+    username: ${DB_USER:xq_user}
+    password: ${DB_PASSWORD:xq_password}
     driver-class-name: org.postgresql.Driver
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
