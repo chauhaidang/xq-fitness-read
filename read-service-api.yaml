@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: XQ Fitness Read Service API
   description: Read-only service for querying workout routines and related data
-  version: 1.0.0
+  version: 1.0.1
   contact:
     name: XQ Fitness Team
 
