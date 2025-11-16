@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'read-service-api.yaml'
+  workflow_dispatch:
+
 
 jobs:
   check-version-change:
