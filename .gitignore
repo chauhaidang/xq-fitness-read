@@ -2,3 +2,5 @@
 build
 .idea
 generated-clients
+xq-compose.yml
+nginx-gateway.conf
