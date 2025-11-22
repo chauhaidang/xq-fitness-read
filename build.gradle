@@ -2,6 +2,8 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.2.0'
     id 'io.spring.dependency-management' version '1.1.4'
+    id 'xq-test' version '2.2.0'
+    id 'xq-dev' version '2.2.0'
 }
 
 group = 'com.xqfitness'
@@ -43,8 +45,35 @@ dependencies {
 
     // Test Dependencies
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'com.h2database:h2'
+
+    // TestNG for component tests
+    testImplementation 'org.testng:testng:7.8.0'
+    testImplementation 'io.rest-assured:rest-assured:5.3.2'
 }
 
-tasks.named('test') {
+// Configure test task to run both JUnit and TestNG tests
+test {
     useJUnitPlatform()
+
+    // Exclude TestNG component tests from JUnit runner
+    exclude '**/component/**/*ApiComponentTest.class'
 }
+
+// Create separate task for component tests using TestNG
+task componentTest(type: Test) {
+    description = 'Runs component tests against real API endpoints using TestNG'
+    group = 'verification'
+
+    useTestNG() {
+        suites 'src/test/resources/testng.xml'
+    }
+
+    // Only run component tests
+    include '**/component/**/*ApiComponentTest.class'
+
+    shouldRunAfter test
+}
+
+// Make check depend on both unit and component tests
+// check.dependsOncomponentTest

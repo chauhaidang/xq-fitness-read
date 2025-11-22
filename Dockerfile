@@ -1,6 +1,11 @@
 # Build stage
 FROM gradle:8.5-jdk17 AS builder
 
+# Build arguments for accessing private GitHub packages
+ARG GITHUB_ACTOR
+ARG GITHUB_TOKEN
+ENV GITHUB_ACTOR=${GITHUB_ACTOR}
+ENV GITHUB_TOKEN=${GITHUB_TOKEN}
 WORKDIR /app
 
 # Copy build files
@@ -11,7 +16,7 @@ COPY gradle ./gradle
 # Copy source code
 COPY src ./src
 
-# Build the application
+# Build the application with GitHub credentials
 RUN gradle clean build -x test
 
 # Runtime stage

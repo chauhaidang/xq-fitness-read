@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: xq-fitness-read-service
+  datasource:
+    url: jdbc:h2:mem:testdb
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: false
+  h2:
+    console:
+      enabled: false
+
+server:
+  port: 0
+  servlet:
+    context-path: /api/v1
+
+logging:
+  level:
+    org.springframework.web: WARN
+    com.xqfitness: WARN
+    org.hibernate.SQL: WARN
