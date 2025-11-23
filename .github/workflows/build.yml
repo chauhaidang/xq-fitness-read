@@ -7,10 +7,13 @@ on:
     paths:
       - 'src/**'
       - 'build.yml'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: chauhaidang/xq-fitness-read-service
+  IMAGE_NAME: ${{ github.repository_owner }}/xq-fitness-read-service
+  GITHUB_OWNER: ${{ github.repository_owner }}
+  SERVICE_NAME: read-service
 
 jobs:
   test:
@@ -82,6 +85,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
+        id: push
         with:
           context: ./
           file: Dockerfile
@@ -93,3 +97,263 @@ jobs:
           build-args: |
             GITHUB_ACTOR=${{ github.actor }}
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install doctl and dependencies
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_TOKEN }}
+
+      - name: Install additional dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq gettext-base
+     
+      - name: Provision database
+        id: provision-db
+        env:
+          DO_TOKEN: ${{ secrets.DO_TOKEN }}
+          REGION: ${{ secrets.REGION || 'sgp1' }}
+          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+          APP_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          # Provision database (idempotent - safe to run multiple times)
+          chmod +x deploy/digitalocean/provision-db.sh
+          cd deploy/digitalocean
+          
+          # Run provision-db.sh - it will create DB if needed or use existing
+          # If user exists and password not provided, script will fail (expected)
+          ./provision-db.sh 2>&1 | tee provision-output.log || {
+            echo "⚠️  Provision script exited with error, checking if DB already exists..."
+            # If script failed, try to get connection details from existing DB
+          }
+          
+          # Get connection details by querying doctl (most reliable)
+          DB_CLUSTER_NAME="${APP_NAME:-xq-fitness}-db"
+          DB_CLUSTER_ID=$(doctl databases list --output json | jq -r '.[] | select(.name=="'"$DB_CLUSTER_NAME"'") | .id' | head -n1)
+          
+          if [ -z "$DB_CLUSTER_ID" ]; then
+            echo "Error: Database cluster not found. Provision script may have failed."
+            exit 1
+          fi
+          
+          # Get connection details
+          CONNECTION_JSON=$(doctl databases connection "$DB_CLUSTER_ID" --output json)
+          
+          # Handle both array and object formats (same logic as provision-db.sh)
+          if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            DB_HOST=$(echo "$CONNECTION_JSON" | jq -r '.[0].host // .[0].uri // empty')
+            DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.[0].port // empty')
+          else
+            DB_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // .uri // empty')
+            DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
+          fi
+          
+          # If host is a URI, extract hostname from it
+          if [[ "$DB_HOST" == *"@"* ]]; then
+            DB_HOST=$(echo "$DB_HOST" | sed -E 's/.*@([^:]+).*/\1/')
+          fi
+          
+          # Fallback: try to get connection string and parse it
+          if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
+            if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+              CONNECTION_STRING=$(echo "$CONNECTION_JSON" | jq -r '.[0].uri // .[0].connection_string // empty')
+            else
+              CONNECTION_STRING=$(echo "$CONNECTION_JSON" | jq -r '.uri // .connection_string // empty')
+            fi
+            if [[ -n "$CONNECTION_STRING" ]]; then
+              DB_HOST=$(echo "$CONNECTION_STRING" | sed -E 's/.*@([^:]+):.*/\1/')
+              DB_PORT=$(echo "$CONNECTION_STRING" | sed -E 's/.*:([0-9]+)\/.*/\1/')
+            fi
+          fi
+          
+          # Final fallback: extract from script output if still empty
+          if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
+            DB_HOST=$(grep -E "^  Host:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
+            DB_PORT=$(grep -E "^  Port:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
+          fi
+          
+          # Get database and user names (from script defaults or secrets)
+          DB_NAME="${APP_DB_NAME:-xq_fitness}"
+          DB_USER="${APP_DB_USER:-xq_app_user}"
+          
+          # Also try to extract from script output as fallback
+          if [[ -z "$DB_NAME" ]]; then
+            DB_NAME=$(grep -E "^  Database:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
+          fi
+          if [[ -z "$DB_USER" ]]; then
+            DB_USER=$(grep -E "^  User:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
+          fi
+          
+          # Use secrets as fallback
+          DB_HOST="${DB_HOST:-${{ secrets.DB_HOST }}}"
+          DB_PORT="${DB_PORT:-${{ secrets.DB_PORT }}}"
+          DB_USER="${DB_USER:-${{ secrets.DB_USER }}}"
+          DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          DB_NAME="${DB_NAME:-${{ secrets.DB_NAME }}}"
+          
+          if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
+            echo "Error: Could not determine all database connection details"
+            echo "DB_HOST: ${DB_HOST:-not set}"
+            echo "DB_PORT: ${DB_PORT:-not set}"
+            echo "DB_USER: ${DB_USER:-not set}"
+            echo "DB_PASSWORD: ${DB_PASSWORD:+set (hidden)}"
+            echo "DB_NAME: ${DB_NAME:-not set}"
+            echo ""
+            echo "Note: If this is the first run, ensure DB_PASSWORD secret is set after running provision-db.sh manually"
+            exit 1
+          fi
+          
+          # Construct SPRING_DATASOURCE_URL for read-service (Spring Boot)
+          SPRING_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+          
+          # Output connection details for next step
+          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
+          echo "db_port=$DB_PORT" >> $GITHUB_OUTPUT
+          echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
+          echo "db_password=$DB_PASSWORD" >> $GITHUB_OUTPUT
+          echo "db_name=$DB_NAME" >> $GITHUB_OUTPUT
+          echo "spring_datasource_url=$SPRING_DATASOURCE_URL" >> $GITHUB_OUTPUT
+          
+          echo "✓ Database provisioned/verified"
+          echo "  Host: $DB_HOST"
+          echo "  Port: $DB_PORT"
+          echo "  Database: $DB_NAME"
+          echo "  User: $DB_USER"
+          echo "  Spring Datasource URL: $SPRING_DATASOURCE_URL"
+
+      - name: Determine image tag
+        id: image-tag
+        run: |
+          # Extract the latest tag from metadata (for main branch it will be 'latest')
+          # For other branches, use branch name or sha
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            BRANCH_NAME=$(echo "${{ github.ref }}" | sed 's/refs\/heads\///')
+            echo "tag=${BRANCH_NAME}-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Render app spec
+        id: render-spec
+        env:
+          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+          REGION: ${{ secrets.REGION || 'sgp1' }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ steps.image-tag.outputs.tag || 'latest' }}
+          GITHUB_REGISTRY_CREDENTIALS: ${{ env.GITHUB_OWNER }}:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          DB_USER: ${{ steps.provision-db.outputs.db_user }}
+          DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
+          SPRING_DATASOURCE_URL: ${{ steps.provision-db.outputs.spring_datasource_url }}
+        run: |
+          # Export all required variables for envsubst
+          export APP_NAME="${APP_NAME}"
+          export REGION="${REGION}"
+          export IMAGE_NAME="${IMAGE_NAME}"
+          export IMAGE_TAG="${IMAGE_TAG:-latest}"
+          export DB_USER="${DB_USER}"
+          export DB_PASSWORD="${DB_PASSWORD}"
+          export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}"
+          
+          # Debug: show what will be substituted
+          echo ">> Variables for substitution:"
+          echo "  APP_NAME: $APP_NAME"
+          echo "  REGION: $REGION"
+          echo "  IMAGE_NAME: $IMAGE_NAME"
+          echo "  IMAGE_TAG: $IMAGE_TAG"
+          echo "  DB_USER: $DB_USER"
+          echo "  SPRING_DATASOURCE_URL: $SPRING_DATASOURCE_URL"
+          echo ""
+          
+          # Render .do/app.yaml from template
+          envsubst < .do/app.yaml > .do/app.rendered.yaml
+          
+          # Remove empty registry_credentials if needed
+          if grep -q 'registry_credentials: ""' .do/app.rendered.yaml; then
+            sed -i '/registry_credentials: ""$/d' .do/app.rendered.yaml
+          fi
+          
+          # Also remove the comment line
+          sed -i '/# Remove the line below if your image is public/d' .do/app.rendered.yaml
+          
+          echo "✓ Rendered app spec"
+          echo "Preview (first 30 lines):"
+          head -n 30 .do/app.rendered.yaml
+
+      - name: Create or update App Platform app
+        id: app-setup
+        env:
+          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+        run: |
+          # Validate rendered spec exists
+          if [ ! -f .do/app.rendered.yaml ]; then
+            echo "Error: Rendered app spec file not found" >&2
+            exit 1
+          fi
+          
+          # Show rendered spec for debugging
+          echo ">> Rendered app spec:"
+          cat .do/app.rendered.yaml
+          echo ""
+          
+          # Validate spec
+          echo ">> Validating app spec..."
+          if doctl apps spec validate .do/app.rendered.yaml 2>&1; then
+            echo "✓ Spec validation passed"
+          else
+            echo "⚠️  Spec validation failed, but continuing..."
+          fi
+          
+          # Get existing app ID if it exists
+          APP_ID=$(doctl apps list --output json 2>/dev/null | jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
+          
+          if [ -z "$APP_ID" ]; then
+            echo "Creating new app..."
+            CREATE_RESPONSE=$(doctl apps create --spec .do/app.rendered.yaml --output json 2>&1)
+            CREATE_EXIT_CODE=$?
+            
+            if [ $CREATE_EXIT_CODE -ne 0 ]; then
+              echo "Error creating app (exit code: $CREATE_EXIT_CODE):" >&2
+              echo "$CREATE_RESPONSE" >&2
+              echo "" >&2
+              echo "Rendered spec file:" >&2
+              cat .do/app.rendered.yaml >&2
+              exit 1
+            fi
+            
+            # Check if response is valid JSON
+            if ! echo "$CREATE_RESPONSE" | jq empty 2>/dev/null; then
+              echo "Error: doctl returned non-JSON response:" >&2
+              echo "$CREATE_RESPONSE" >&2
+              exit 1
+            fi
+            
+            APP_ID=$(echo "$CREATE_RESPONSE" | jq -r '.app.id // .id // empty')
+            if [ -z "$APP_ID" ]; then
+              echo "Error: Could not extract app ID from create response:" >&2
+              echo "$CREATE_RESPONSE" >&2
+              exit 1
+            fi
+            echo "Created app: $APP_ID"
+          else
+            echo "Updating existing app: $APP_ID"
+            if ! UPDATE_RESPONSE=$(doctl apps update "$APP_ID" --spec .do/app.rendered.yaml --output json 2>&1); then
+              echo "Error updating app:" >&2
+              echo "$UPDATE_RESPONSE" >&2
+              echo "" >&2
+              echo "Rendered spec file:" >&2
+              cat .do/app.rendered.yaml >&2
+              exit 1
+            fi
+            echo "Updated app: $APP_ID"
+          fi
+          
+          echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
+          echo "✓ App ID: $APP_ID"
+
+      - name: Deploy to App Platform
+        uses: digitalocean/app_action/deploy@v2
+        with:
+          token: ${{ secrets.DO_TOKEN }}
+          app_name: ${{ secrets.APP_NAME || 'xq-fitness' }}
+          app_spec_location: .do/app.rendered.yaml
+          print_deploy_logs: true
