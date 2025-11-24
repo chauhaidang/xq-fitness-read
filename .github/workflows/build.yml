@@ -37,17 +37,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Generate API client
+      - name: Generate API client and run unit tests
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew generateApiClient --no-daemon
-
-      - name: Run unit tests
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew test --no-daemon
+        run: ./gradlew generateApiClient test --no-daemon
 
       - name: Upload test results
         if: failure()
