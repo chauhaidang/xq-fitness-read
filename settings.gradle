@@ -35,8 +35,9 @@ buildscript {
 }
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()  // Check local maven first for generated clients
         mavenCentral()
-        mavenLocal()
     }
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
 }
 

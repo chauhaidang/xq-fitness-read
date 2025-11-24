@@ -20,8 +20,8 @@ configurations {
 }
 
 repositories {
+    mavenLocal()  // Check local maven first for generated clients
     mavenCentral()
-    mavenLocal()
 }
 
 dependencies {
