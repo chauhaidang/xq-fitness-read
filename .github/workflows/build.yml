@@ -1,4 +1,4 @@
-name: Build and publish
+name: Build Test Publish Deploy
 
 on:
   push:
@@ -16,7 +16,7 @@ env:
   SERVICE_NAME: read-service
 
 jobs:
-  test:
+  unit-tests:
     name: Run Tests
     runs-on: ubuntu-latest
     permissions:
@@ -37,23 +37,40 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Generate API client and run unit tests
+
+      - name: Generate api client
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew generateApiClient test --no-daemon
+        run: ./gradlew generateApiClient
+
+      - name: Run unit tests
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew test --no-daemon
 
       - name: Upload test results
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: build/reports/tests/test/
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/
+          retention-days: 7
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/reports/jacoco/test/html/
           retention-days: 7
 
   build-and-push:
     name: Build and Push Docker Image
-    needs: test
+    needs: unit-tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
