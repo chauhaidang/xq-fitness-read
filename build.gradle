@@ -52,11 +52,17 @@ dependencies {
     testImplementation 'org.testng:testng:7.8.0'
 
     // Generated API client for component tests
-    testImplementation 'com.xqfitness.client:read-service-client:1.0.0'
+    implementation 'com.xqfitness.client:read-service-client:1.0.0'
+}
+
+// Ensure test compilation and test execution depend on API client generation
+tasks.named('compileTestJava') {
+    dependsOn 'generateApiClient'
 }
 
 // Configure test task to run both JUnit and TestNG tests
 test {
+    dependsOn 'generateApiClient'
     useJUnitPlatform()
 
     // Exclude TestNG component tests from JUnit runner
