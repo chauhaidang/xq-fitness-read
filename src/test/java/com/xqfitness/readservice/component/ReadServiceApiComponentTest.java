@@ -1,7 +1,24 @@
 package com.xqfitness.readservice.component;
 
+import com.xqfitness.client.read_service.api.*;
+import com.xqfitness.client.read_service.invoker.*;
+import com.xqfitness.client.read_service.model.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.testng.annotations.*;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.testng.Assert.*;
@@ -26,7 +43,7 @@ public class ReadServiceApiComponentTest {
     private static final int DEFAULT_TIMEOUT = 5000;
 
     private ApiClient apiClient;
-    private MuscleGroupApi muscleGroupsApi;
+    private MuscleGroupsApi muscleGroupsApi;
     private RoutinesApi routinesApi;
     private WorkoutDaysApi workoutDaysApi;
 
@@ -36,26 +53,78 @@ public class ReadServiceApiComponentTest {
     public void setupClass() {
         apiClient = new ApiClient();
         apiClient.setBasePath(BASE_URL);
-        apiClient.setConnectTimeout(DEFAULT_TIMEOUT);
-        apiClient.setReadTimeout(DEFAULT_TIMEOUT);
+        
+        // Configure ObjectMapper to handle LocalDateTime format (without timezone) from API
+        // The API returns dates like "2025-11-26T12:29:45.943637" (no timezone)
+        // but the generated client expects OffsetDateTime. This custom deserializer
+        // converts LocalDateTime strings to OffsetDateTime (treating as UTC).
+        configureApiClientForLocalDateTime(apiClient);
 
         muscleGroupsApi = new MuscleGroupsApi(apiClient);
         routinesApi = new RoutinesApi(apiClient);
         workoutDaysApi = new WorkoutDaysApi(apiClient);
     }
+    
+    /**
+     * Configures the ApiClient's ObjectMapper to handle LocalDateTime strings
+     * (without timezone) by converting them to OffsetDateTime (treating as UTC).
+     * This is needed because the API returns LocalDateTime format but the generated
+     * client expects OffsetDateTime.
+     */
+    private void configureApiClientForLocalDateTime(ApiClient apiClient) {
+        try {
+            // Access the ObjectMapper from ApiClient using reflection
+            Field objectMapperField = ApiClient.class.getDeclaredField("objectMapper");
+            objectMapperField.setAccessible(true);
+            ObjectMapper objectMapper = (ObjectMapper) objectMapperField.get(apiClient);
+            
+            // Add custom deserializer for OffsetDateTime that handles LocalDateTime format
+            SimpleModule module = new SimpleModule("LocalDateTimeToOffsetDateTimeModule");
+            module.addDeserializer(OffsetDateTime.class, new JsonDeserializer<OffsetDateTime>() {
+                @Override
+                public OffsetDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+                    String value = p.getText();
+                    if (value == null || value.isEmpty()) {
+                        return null;
+                    }
+                    // Handle LocalDateTime format (without timezone) by treating as UTC
+                    if (value.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?$") && 
+                        !value.contains("+") && !value.endsWith("Z") && 
+                        !value.matches(".*[+-]\\d{2}:\\d{2}$")) {
+                        // Parse as LocalDateTime and convert to OffsetDateTime with UTC offset
+                        LocalDateTime localDateTime = LocalDateTime.parse(value);
+                        return localDateTime.atOffset(ZoneOffset.UTC);
+                    }
+                    // Otherwise, try to parse as OffsetDateTime
+                    try {
+                        return OffsetDateTime.parse(value);
+                    } catch (Exception e) {
+                        // If that fails, try appending Z and parse again
+                        return OffsetDateTime.parse(value + "Z");
+                    }
+                }
+            });
+            objectMapper.registerModule(module);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to configure ApiClient for LocalDateTime handling", e);
+        }
+    }
 
     @BeforeMethod
-    public void setupMethod() throws ApiException {
+    public void setupMethod() {
         try {
-            muscleGroupsApi.getMuscleGroups();
-        } catch (ApiException e) {
-            fail("Service should be accessible. Status: " + e.getCode());
+            // WebClient returns Flux, need to collect to list and block
+            muscleGroupsApi.getMuscleGroups().collectList().block();
+        } catch (WebClientResponseException e) {
+            fail("Service should be accessible. Status: " + e.getStatusCode().value());
+        } catch (Exception e) {
+            fail("Service should be accessible. Error: " + e.getMessage());
         }
     }
 
     @Test(priority = 1, description = "GET /muscle-groups - Should return all muscle groups")
-    public void testGetAllMuscleGroups() throws ApiException {
-        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups();
+    public void testGetAllMuscleGroups() {
+        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
 
         assertNotNull(muscleGroups, "Muscle groups list should not be null");
         assertTrue(muscleGroups.size() >= 0, "Should return a valid list");
@@ -69,8 +138,8 @@ public class ReadServiceApiComponentTest {
     }
 
     @Test(priority = 2, description = "GET /routines - Should return all workout routines")
-    public void testGetAllRoutines() throws ApiException {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(null);
+    public void testGetAllRoutines() {
+        List<WorkoutRoutine> routines = routinesApi.getRoutines(null).collectList().block();
 
         assertNotNull(routines, "Routines list should not be null");
         assertTrue(routines.size() >= 0, "Should return a valid list");
@@ -87,8 +156,8 @@ public class ReadServiceApiComponentTest {
     }
 
     @Test(priority = 3, description = "GET /routines?isActive=true - Should return only active routines")
-    public void testGetActiveRoutines() throws ApiException {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(true);
+    public void testGetActiveRoutines() {
+        List<WorkoutRoutine> routines = routinesApi.getRoutines(true).collectList().block();
 
         assertNotNull(routines, "Active routines list should not be null");
 
@@ -98,8 +167,8 @@ public class ReadServiceApiComponentTest {
     }
 
     @Test(priority = 4, description = "GET /routines?isActive=false - Should return only inactive routines")
-    public void testGetInactiveRoutines() throws ApiException {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(false);
+    public void testGetInactiveRoutines() {
+        List<WorkoutRoutine> routines = routinesApi.getRoutines(false).collectList().block();
 
         assertNotNull(routines, "Inactive routines list should not be null");
 
@@ -110,12 +179,12 @@ public class ReadServiceApiComponentTest {
 
     @Test(priority = 5, dependsOnMethods = "testGetAllRoutines",
           description = "GET /routines/{id} - Should return routine with details")
-    public void testGetRoutineById() throws ApiException {
+    public void testGetRoutineById() {
         if (testRoutineId == null) {
             return;
         }
 
-        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId);
+        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
 
         assertNotNull(routine, "Routine details should not be null");
         assertEquals(routine.getId(), testRoutineId, "Routine ID should match requested ID");
@@ -134,22 +203,24 @@ public class ReadServiceApiComponentTest {
     @Test(priority = 6, description = "GET /routines/{id} - Should return 404 for non-existent routine")
     public void testGetRoutineById_NotFound() {
         try {
-            routinesApi.getRoutineById(999999L);
-            fail("Should have thrown ApiException with 404 status");
-        } catch (ApiException e) {
-            assertEquals(e.getCode(), 404, "Should return 404 for non-existent routine");
+            routinesApi.getRoutineById(999999L).block();
+            fail("Should have thrown WebClientResponseException with 404 status");
+        } catch (WebClientResponseException e) {
+            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 for non-existent routine");
+        } catch (Exception e) {
+            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
         }
     }
 
     @Test(priority = 7, dependsOnMethods = "testGetAllRoutines",
           description = "GET /routines/{id}/days - Should return workout days for routine")
-    public void testGetWorkoutDays() throws ApiException {
+    public void testGetWorkoutDays() {
         if (testRoutineId == null) {
             return;
         }
 
         try {
-            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId);
+            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId).collectList().block();
 
             assertNotNull(days, "Workout days list should not be null");
             assertTrue(days.size() > 0, "Should have at least one workout day");
@@ -172,30 +243,32 @@ public class ReadServiceApiComponentTest {
                 assertNotNull(firstDay.getSets().get(0).getNumberOfSets(),
                              "Set should have number of sets");
             }
-        } catch (ApiException e) {
-            assertEquals(e.getCode(), 404, "Should return 404 if routine has no days");
+        } catch (WebClientResponseException e) {
+            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 if routine has no days");
         }
     }
 
     @Test(priority = 8, description = "GET /routines/{id}/days - Should return 404 for non-existent routine")
     public void testGetWorkoutDays_NotFound() {
         try {
-            workoutDaysApi.getWorkoutDays(999999L);
-            fail("Should have thrown ApiException with 404 status");
-        } catch (ApiException e) {
-            assertEquals(e.getCode(), 404, "Should return 404 for non-existent routine days");
+            workoutDaysApi.getWorkoutDays(999999L).collectList().block();
+            fail("Should have thrown WebClientResponseException with 404 status");
+        } catch (WebClientResponseException e) {
+            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 for non-existent routine days");
+        } catch (Exception e) {
+            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
         }
     }
 
     @Test(priority = 9, dependsOnMethods = "testGetAllRoutines",
           description = "GET /routines/{id}/days - Should return workout days ordered by dayNumber")
-    public void testGetWorkoutDays_OrderedByDayNumber() throws ApiException {
+    public void testGetWorkoutDays_OrderedByDayNumber() {
         if (testRoutineId == null) {
             return;
         }
 
         try {
-            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId);
+            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId).collectList().block();
 
             assertNotNull(days, "Workout days list should not be null");
 
@@ -205,25 +278,25 @@ public class ReadServiceApiComponentTest {
                               "Days should be ordered by dayNumber in ascending order");
                 }
             }
-        } catch (ApiException e) {
-            assertEquals(e.getCode(), 404, "404 is acceptable if routine has no days");
+        } catch (WebClientResponseException e) {
+            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "404 is acceptable if routine has no days");
         }
     }
 
     @Test(priority = 10, description = "Verify API responses are valid JSON")
-    public void testResponseFormat() throws ApiException {
-        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups();
+    public void testResponseFormat() {
+        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
         assertNotNull(muscleGroups, "Response should be deserializable");
 
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(null);
+        List<WorkoutRoutine> routines = routinesApi.getRoutines(null).collectList().block();
         assertNotNull(routines, "Response should be deserializable");
     }
 
     @Test(priority = 11, description = "Verify API responds within acceptable time")
-    public void testResponseTime() throws ApiException {
+    public void testResponseTime() {
         long startTime = System.currentTimeMillis();
 
-        muscleGroupsApi.getMuscleGroups();
+        muscleGroupsApi.getMuscleGroups().collectList().block();
 
         long duration = System.currentTimeMillis() - startTime;
         assertTrue(duration < DEFAULT_TIMEOUT,

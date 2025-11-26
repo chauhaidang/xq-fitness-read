@@ -35,9 +35,15 @@ buildscript {
 }
 dependencyResolutionManagement {
     repositories {
-        mavenLocal()  // Check local maven first for generated clients
         mavenCentral()
+        mavenLocal()
+        maven {
+            url = uri("https://maven.pkg.github.com/chauhaidang/xq-plugins")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
 }
 

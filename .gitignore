@@ -6,3 +6,4 @@ xq-compose.yml
 nginx-gateway.conf
 openapitools.json
 bin/
+.DS_Store

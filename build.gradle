@@ -2,7 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.2.0'
     id 'io.spring.dependency-management' version '1.1.4'
-    id 'xq-test' version '2.2.1'
+    id 'xq-test' version '2.3.0'
     id 'xq-dev' version '2.2.1'
 }
 
@@ -20,8 +20,8 @@ configurations {
 }
 
 repositories {
-    mavenLocal()  // Check local maven first for generated clients
     mavenCentral()
+    mavenLocal()
 }
 
 dependencies {
@@ -48,21 +48,18 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'com.h2database:h2'
 
+    // Spring WebFlux for WebClient (needed by generated API client)
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
+
     // TestNG for component tests
     testImplementation 'org.testng:testng:7.8.0'
 
-    // Generated API client for component tests
+    // Generated API client for component tests (WebClient-based)
     testImplementation 'com.xqfitness.client:read-service-client:1.0.2'
-}
-
-// Ensure test compilation and test execution depend on API client generation
-tasks.named('compileTestJava') {
-    dependsOn 'generateApiClient'
 }
 
 // Configure test task to run both JUnit and TestNG tests
 test {
-    dependsOn 'generateApiClient'
     useJUnitPlatform()
 
     // Exclude TestNG component tests from JUnit runner
