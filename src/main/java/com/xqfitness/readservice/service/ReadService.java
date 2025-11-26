@@ -43,12 +43,12 @@ public class ReadService {
             .collect(Collectors.toList());
     }
 
-    public Optional<WorkoutRoutineDetailDTO> getRoutineById(Long id) {
+    public Optional<WorkoutRoutineDetailDTO> getRoutineById(Integer id) {
         return workoutRoutineRepository.findByIdWithDetails(id)
             .map(WorkoutRoutineDetailDTO::fromEntity);
     }
 
-    public List<WorkoutDayDetailDTO> getWorkoutDaysByRoutineId(Long routineId) {
+    public List<WorkoutDayDetailDTO> getWorkoutDaysByRoutineId(Integer routineId) {
         return workoutDayRepository.findByRoutineIdWithSets(routineId).stream()
             .map(WorkoutDayDetailDTO::fromEntity)
             .collect(Collectors.toList());

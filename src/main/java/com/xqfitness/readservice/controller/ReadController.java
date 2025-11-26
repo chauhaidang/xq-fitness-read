@@ -29,7 +29,7 @@ public class ReadController {
 
     @GetMapping("/routines/{routineId}")
     public ResponseEntity<WorkoutRoutineDetailDTO> getRoutineById(
-        @PathVariable Long routineId
+        @PathVariable Integer routineId
     ) {
         return readService.getRoutineById(routineId)
             .map(ResponseEntity::ok)
@@ -38,7 +38,7 @@ public class ReadController {
 
     @GetMapping("/routines/{routineId}/days")
     public ResponseEntity<List<WorkoutDayDetailDTO>> getWorkoutDays(
-        @PathVariable Long routineId
+        @PathVariable Integer routineId
     ) {
         List<WorkoutDayDetailDTO> days = readService.getWorkoutDaysByRoutineId(routineId);
         if (days.isEmpty()) {

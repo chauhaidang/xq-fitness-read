@@ -29,14 +29,14 @@ class DTOConversionTest {
 
         // Setup MuscleGroup entity
         muscleGroupEntity = new MuscleGroup();
-        muscleGroupEntity.setId(1L);
+        muscleGroupEntity.setId(1);
         muscleGroupEntity.setName("Chest");
         muscleGroupEntity.setDescription("Chest muscles");
         muscleGroupEntity.setCreatedAt(now);
 
         // Setup WorkoutRoutine entity
         workoutRoutineEntity = new WorkoutRoutine();
-        workoutRoutineEntity.setId(1L);
+        workoutRoutineEntity.setId(1);
         workoutRoutineEntity.setName("5-Day Split");
         workoutRoutineEntity.setDescription("5 day workout split");
         workoutRoutineEntity.setIsActive(true);
@@ -46,7 +46,7 @@ class DTOConversionTest {
 
         // Setup WorkoutDay entity
         workoutDayEntity = new WorkoutDay();
-        workoutDayEntity.setId(1L);
+        workoutDayEntity.setId(1);
         workoutDayEntity.setRoutine(workoutRoutineEntity);
         workoutDayEntity.setDayNumber(1);
         workoutDayEntity.setDayName("Chest Day");
@@ -57,7 +57,7 @@ class DTOConversionTest {
 
         // Setup WorkoutDaySet entity
         workoutDaySetEntity = new WorkoutDaySet();
-        workoutDaySetEntity.setId(1L);
+        workoutDaySetEntity.setId(1);
         workoutDaySetEntity.setWorkoutDay(workoutDayEntity);
         workoutDaySetEntity.setMuscleGroup(muscleGroupEntity);
         workoutDaySetEntity.setNumberOfSets(4);
@@ -74,7 +74,7 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
         assertThat(dto.getName()).isEqualTo("Chest");
         assertThat(dto.getDescription()).isEqualTo("Chest muscles");
         assertThat(dto.getCreatedAt()).isEqualTo(now);
@@ -102,7 +102,7 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
         assertThat(dto.getName()).isEqualTo("5-Day Split");
         assertThat(dto.getDescription()).isEqualTo("5 day workout split");
         assertThat(dto.getIsActive()).isTrue();
@@ -129,7 +129,7 @@ class DTOConversionTest {
     void workoutRoutineDetailDTOFromEntity_shouldConvertRoutineWithWorkoutDays() {
         // Given
         WorkoutDay day1 = new WorkoutDay();
-        day1.setId(1L);
+        day1.setId(1);
         day1.setRoutine(workoutRoutineEntity);
         day1.setDayNumber(1);
         day1.setDayName("Chest Day");
@@ -139,7 +139,7 @@ class DTOConversionTest {
         day1.setSets(new ArrayList<>());
 
         WorkoutDay day2 = new WorkoutDay();
-        day2.setId(2L);
+        day2.setId(2);
         day2.setRoutine(workoutRoutineEntity);
         day2.setDayNumber(2);
         day2.setDayName("Back Day");
@@ -155,7 +155,7 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
         assertThat(dto.getName()).isEqualTo("5-Day Split");
         assertThat(dto.getWorkoutDays()).hasSize(2);
         assertThat(dto.getWorkoutDays().get(0).getDayName()).isEqualTo("Chest Day");
@@ -181,8 +181,8 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
-        assertThat(dto.getRoutineId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
+        assertThat(dto.getRoutineId()).isEqualTo(1);
         assertThat(dto.getDayNumber()).isEqualTo(1);
         assertThat(dto.getDayName()).isEqualTo("Chest Day");
         assertThat(dto.getNotes()).isEqualTo("Focus on compound movements");
@@ -196,7 +196,7 @@ class DTOConversionTest {
     void workoutDayDetailDTOFromEntity_shouldConvertWorkoutDayWithSets() {
         // Given
         WorkoutDaySet set1 = new WorkoutDaySet();
-        set1.setId(1L);
+        set1.setId(1);
         set1.setWorkoutDay(workoutDayEntity);
         set1.setMuscleGroup(muscleGroupEntity);
         set1.setNumberOfSets(4);
@@ -205,13 +205,13 @@ class DTOConversionTest {
         set1.setUpdatedAt(now);
 
         MuscleGroup back = new MuscleGroup();
-        back.setId(2L);
+        back.setId(2);
         back.setName("Back");
         back.setDescription("Back muscles");
         back.setCreatedAt(now);
 
         WorkoutDaySet set2 = new WorkoutDaySet();
-        set2.setId(2L);
+        set2.setId(2);
         set2.setWorkoutDay(workoutDayEntity);
         set2.setMuscleGroup(back);
         set2.setNumberOfSets(3);
@@ -252,8 +252,8 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
-        assertThat(dto.getWorkoutDayId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
+        assertThat(dto.getWorkoutDayId()).isEqualTo(1);
         assertThat(dto.getNumberOfSets()).isEqualTo(4);
         assertThat(dto.getNotes()).isEqualTo("Bench press and variations");
         assertThat(dto.getCreatedAt()).isEqualTo(now);
@@ -269,7 +269,7 @@ class DTOConversionTest {
         // Then
         assertThat(dto).isNotNull();
         assertThat(dto.getMuscleGroup()).isNotNull();
-        assertThat(dto.getMuscleGroup().getId()).isEqualTo(1L);
+        assertThat(dto.getMuscleGroup().getId()).isEqualTo(1);
         assertThat(dto.getMuscleGroup().getName()).isEqualTo("Chest");
         assertThat(dto.getMuscleGroup().getDescription()).isEqualTo("Chest muscles");
     }
@@ -322,7 +322,7 @@ class DTOConversionTest {
         // Given - Build a complete entity graph
         MuscleGroup chest = muscleGroupEntity;
         MuscleGroup shoulders = new MuscleGroup();
-        shoulders.setId(2L);
+        shoulders.setId(2);
         shoulders.setName("Shoulders");
         shoulders.setDescription("Shoulder muscles");
         shoulders.setCreatedAt(now);
@@ -330,7 +330,7 @@ class DTOConversionTest {
         WorkoutRoutine routine = workoutRoutineEntity;
 
         WorkoutDay day1 = new WorkoutDay();
-        day1.setId(1L);
+        day1.setId(1);
         day1.setRoutine(routine);
         day1.setDayNumber(1);
         day1.setDayName("Upper Body");
@@ -339,7 +339,7 @@ class DTOConversionTest {
         day1.setUpdatedAt(now);
 
         WorkoutDaySet set1 = new WorkoutDaySet();
-        set1.setId(1L);
+        set1.setId(1);
         set1.setWorkoutDay(day1);
         set1.setMuscleGroup(chest);
         set1.setNumberOfSets(4);
@@ -348,7 +348,7 @@ class DTOConversionTest {
         set1.setUpdatedAt(now);
 
         WorkoutDaySet set2 = new WorkoutDaySet();
-        set2.setId(2L);
+        set2.setId(2);
         set2.setWorkoutDay(day1);
         set2.setMuscleGroup(shoulders);
         set2.setNumberOfSets(3);
@@ -364,7 +364,7 @@ class DTOConversionTest {
 
         // Then
         assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(1L);
+        assertThat(dto.getId()).isEqualTo(1);
         assertThat(dto.getName()).isEqualTo("5-Day Split");
         assertThat(dto.getWorkoutDays()).hasSize(1);
 

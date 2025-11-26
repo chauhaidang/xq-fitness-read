@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkoutRoutineDetailDTO {
-    private Long id;
+    private Integer id;
     private String name;
     private String description;
     private Boolean isActive;

@@ -13,8 +13,8 @@ import java.util.stream.Collectors;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkoutDayDetailDTO {
-    private Long id;
-    private Long routineId;
+    private Integer id;
+    private Integer routineId;
     private Integer dayNumber;
     private String dayName;
     private String notes;

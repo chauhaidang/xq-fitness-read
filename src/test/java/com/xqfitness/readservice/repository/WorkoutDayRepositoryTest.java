@@ -114,7 +114,7 @@ class WorkoutDayRepositoryTest {
     @DisplayName("findByRoutineIdWithSets - should return empty list for non-existent routine")
     void findByRoutineIdWithSets_shouldReturnEmptyListForNonExistentRoutine() {
         // When
-        List<WorkoutDay> days = workoutDayRepository.findByRoutineIdWithSets(999L);
+        List<WorkoutDay> days = workoutDayRepository.findByRoutineIdWithSets(999);
 
         // Then
         assertThat(days).isEmpty();

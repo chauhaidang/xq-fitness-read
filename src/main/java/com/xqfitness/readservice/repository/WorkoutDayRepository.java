@@ -9,8 +9,8 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface WorkoutDayRepository extends JpaRepository<WorkoutDay, Long> {
+public interface WorkoutDayRepository extends JpaRepository<WorkoutDay, Integer> {
 
     @Query("SELECT d FROM WorkoutDay d LEFT JOIN FETCH d.sets s LEFT JOIN FETCH s.muscleGroup WHERE d.routine.id = :routineId ORDER BY d.dayNumber")
-    List<WorkoutDay> findByRoutineIdWithSets(@Param("routineId") Long routineId);
+    List<WorkoutDay> findByRoutineIdWithSets(@Param("routineId") Integer routineId);
 }

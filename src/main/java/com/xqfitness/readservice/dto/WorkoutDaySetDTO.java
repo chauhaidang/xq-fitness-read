@@ -11,8 +11,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkoutDaySetDTO {
-    private Long id;
-    private Long workoutDayId;
+    private Integer id;
+    private Integer workoutDayId;
     private MuscleGroupDTO muscleGroup;
     private Integer numberOfSets;
     private String notes;

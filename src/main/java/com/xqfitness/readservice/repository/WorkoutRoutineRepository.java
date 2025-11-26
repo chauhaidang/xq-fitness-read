@@ -10,10 +10,10 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface WorkoutRoutineRepository extends JpaRepository<WorkoutRoutine, Long> {
+public interface WorkoutRoutineRepository extends JpaRepository<WorkoutRoutine, Integer> {
 
     List<WorkoutRoutine> findByIsActive(Boolean isActive);
 
     @Query("SELECT DISTINCT r FROM WorkoutRoutine r LEFT JOIN FETCH r.workoutDays WHERE r.id = :id")
-    Optional<WorkoutRoutine> findByIdWithDetails(@Param("id") Long id);
+    Optional<WorkoutRoutine> findByIdWithDetails(@Param("id") Integer id);
 }

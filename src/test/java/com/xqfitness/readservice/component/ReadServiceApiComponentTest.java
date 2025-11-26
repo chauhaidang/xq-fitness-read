@@ -6,8 +6,6 @@ import com.xqfitness.client.read_service.model.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.testng.annotations.*;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.core.JsonParser;
@@ -116,9 +114,9 @@ public class ReadServiceApiComponentTest {
             // WebClient returns Flux, need to collect to list and block
             muscleGroupsApi.getMuscleGroups().collectList().block();
         } catch (WebClientResponseException e) {
-            fail("Service should be accessible. Status: " + e.getStatusCode().value());
+            fail("Service should be accessible. Status: " + e.getStatusCode().value() + ", Response: " + e.getResponseBodyAsString());
         } catch (Exception e) {
-            fail("Service should be accessible. Error: " + e.getMessage());
+            fail("Service should be accessible. Error: " + e.getMessage() + ", Type: " + e.getClass().getName(), e);
         }
     }
 

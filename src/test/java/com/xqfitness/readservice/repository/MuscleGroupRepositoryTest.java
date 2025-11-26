@@ -72,7 +72,7 @@ class MuscleGroupRepositoryTest {
     @DisplayName("findById - should return empty Optional for non-existent ID")
     void findById_shouldReturnEmptyOptionalForNonExistentId() {
         // When
-        Optional<MuscleGroup> found = muscleGroupRepository.findById(999L);
+        Optional<MuscleGroup> found = muscleGroupRepository.findById(999);
 
         // Then
         assertThat(found).isEmpty();

@@ -137,7 +137,7 @@ class WorkoutRoutineRepositoryTest {
     @DisplayName("findByIdWithDetails - should return empty Optional for non-existent routine")
     void findByIdWithDetails_shouldReturnEmptyOptionalForNonExistentRoutine() {
         // When
-        Optional<WorkoutRoutine> found = workoutRoutineRepository.findByIdWithDetails(999L);
+        Optional<WorkoutRoutine> found = workoutRoutineRepository.findByIdWithDetails(999);
 
         // Then
         assertThat(found).isEmpty();

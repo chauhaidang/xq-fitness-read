@@ -54,14 +54,14 @@ class ReadControllerTest {
 
         // Setup MuscleGroupDTOs
         muscleGroupDTO1 = new MuscleGroupDTO(
-                1L,
+                1,
                 "Chest",
                 "Chest muscles",
                 now
         );
 
         muscleGroupDTO2 = new MuscleGroupDTO(
-                2L,
+                2,
                 "Back",
                 "Back muscles",
                 now
@@ -69,7 +69,7 @@ class ReadControllerTest {
 
         // Setup WorkoutRoutineDTOs
         activeRoutineDTO = new WorkoutRoutineDTO(
-                1L,
+                1,
                 "5-Day Split",
                 "5 day workout split",
                 true,
@@ -78,7 +78,7 @@ class ReadControllerTest {
         );
 
         inactiveRoutineDTO = new WorkoutRoutineDTO(
-                2L,
+                2,
                 "3-Day Split",
                 "3 day workout split",
                 false,
@@ -88,8 +88,8 @@ class ReadControllerTest {
 
         // Setup WorkoutDayDetailDTOs
         workoutDayDetailDTO1 = new WorkoutDayDetailDTO(
-                1L,
-                1L,
+                1,
+                1,
                 1,
                 "Chest Day",
                 "Focus on compound movements",
@@ -99,8 +99,8 @@ class ReadControllerTest {
         );
 
         workoutDayDetailDTO2 = new WorkoutDayDetailDTO(
-                2L,
-                1L,
+                2,
+                1,
                 2,
                 "Back Day",
                 "Pull exercises",
@@ -111,7 +111,7 @@ class ReadControllerTest {
 
         // Setup WorkoutRoutineDetailDTO
         routineDetailDTO = new WorkoutRoutineDetailDTO(
-                1L,
+                1,
                 "5-Day Split",
                 "5 day workout split",
                 true,
@@ -240,7 +240,7 @@ class ReadControllerTest {
     @DisplayName("GET /routines/{routineId} - should return 200 OK with routine details for valid ID")
     void getRoutineById_shouldReturn200WithRoutineDetailsForValidId() throws Exception {
         // Given
-        when(readService.getRoutineById(1L)).thenReturn(Optional.of(routineDetailDTO));
+        when(readService.getRoutineById(1)).thenReturn(Optional.of(routineDetailDTO));
 
         // When & Then
         mockMvc.perform(get("/routines/1")
@@ -254,21 +254,21 @@ class ReadControllerTest {
                 .andExpect(jsonPath("$.workoutDays[0].dayName").value("Chest Day"))
                 .andExpect(jsonPath("$.workoutDays[1].dayName").value("Back Day"));
 
-        verify(readService, times(1)).getRoutineById(1L);
+        verify(readService, times(1)).getRoutineById(1);
     }
 
     @Test
     @DisplayName("GET /routines/{routineId} - should return 404 NOT FOUND for non-existent routine")
     void getRoutineById_shouldReturn404ForNonExistentRoutine() throws Exception {
         // Given
-        when(readService.getRoutineById(999L)).thenReturn(Optional.empty());
+        when(readService.getRoutineById(999)).thenReturn(Optional.empty());
 
         // When & Then
         mockMvc.perform(get("/routines/999")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
 
-        verify(readService, times(1)).getRoutineById(999L);
+        verify(readService, times(1)).getRoutineById(999);
     }
 
     @Test
@@ -276,7 +276,7 @@ class ReadControllerTest {
     void getWorkoutDays_shouldReturn200WithWorkoutDaysForValidRoutine() throws Exception {
         // Given
         List<WorkoutDayDetailDTO> workoutDays = Arrays.asList(workoutDayDetailDTO1, workoutDayDetailDTO2);
-        when(readService.getWorkoutDaysByRoutineId(1L)).thenReturn(workoutDays);
+        when(readService.getWorkoutDaysByRoutineId(1)).thenReturn(workoutDays);
 
         // When & Then
         mockMvc.perform(get("/routines/1/days")
@@ -292,34 +292,34 @@ class ReadControllerTest {
                 .andExpect(jsonPath("$[1].dayNumber").value(2))
                 .andExpect(jsonPath("$[1].dayName").value("Back Day"));
 
-        verify(readService, times(1)).getWorkoutDaysByRoutineId(1L);
+        verify(readService, times(1)).getWorkoutDaysByRoutineId(1);
     }
 
     @Test
     @DisplayName("GET /routines/{routineId}/days - should return 404 NOT FOUND when routine has no days")
     void getWorkoutDays_shouldReturn404WhenRoutineHasNoDays() throws Exception {
         // Given
-        when(readService.getWorkoutDaysByRoutineId(1L)).thenReturn(new ArrayList<>());
+        when(readService.getWorkoutDaysByRoutineId(1)).thenReturn(new ArrayList<>());
 
         // When & Then
         mockMvc.perform(get("/routines/1/days")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
 
-        verify(readService, times(1)).getWorkoutDaysByRoutineId(1L);
+        verify(readService, times(1)).getWorkoutDaysByRoutineId(1);
     }
 
     @Test
     @DisplayName("GET /routines/{routineId}/days - should return 404 NOT FOUND for non-existent routine")
     void getWorkoutDays_shouldReturn404ForNonExistentRoutine() throws Exception {
         // Given
-        when(readService.getWorkoutDaysByRoutineId(999L)).thenReturn(new ArrayList<>());
+        when(readService.getWorkoutDaysByRoutineId(999)).thenReturn(new ArrayList<>());
 
         // When & Then
         mockMvc.perform(get("/routines/999/days")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
 
-        verify(readService, times(1)).getWorkoutDaysByRoutineId(999L);
+        verify(readService, times(1)).getWorkoutDaysByRoutineId(999);
     }
 }

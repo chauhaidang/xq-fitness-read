@@ -55,20 +55,20 @@ class ReadServiceTest {
     void setUp() {
         // Setup MuscleGroups
         muscleGroup1 = new MuscleGroup();
-        muscleGroup1.setId(1L);
+        muscleGroup1.setId(1);
         muscleGroup1.setName("Chest");
         muscleGroup1.setDescription("Chest muscles");
         muscleGroup1.setCreatedAt(LocalDateTime.now());
 
         muscleGroup2 = new MuscleGroup();
-        muscleGroup2.setId(2L);
+        muscleGroup2.setId(2);
         muscleGroup2.setName("Back");
         muscleGroup2.setDescription("Back muscles");
         muscleGroup2.setCreatedAt(LocalDateTime.now());
 
         // Setup WorkoutRoutines
         activeRoutine = new WorkoutRoutine();
-        activeRoutine.setId(1L);
+        activeRoutine.setId(1);
         activeRoutine.setName("5-Day Split");
         activeRoutine.setDescription("5 day workout split");
         activeRoutine.setIsActive(true);
@@ -77,7 +77,7 @@ class ReadServiceTest {
         activeRoutine.setWorkoutDays(new ArrayList<>());
 
         inactiveRoutine = new WorkoutRoutine();
-        inactiveRoutine.setId(2L);
+        inactiveRoutine.setId(2);
         inactiveRoutine.setName("3-Day Split");
         inactiveRoutine.setDescription("3 day workout split");
         inactiveRoutine.setIsActive(false);
@@ -87,7 +87,7 @@ class ReadServiceTest {
 
         // Setup WorkoutDays
         workoutDay1 = new WorkoutDay();
-        workoutDay1.setId(1L);
+        workoutDay1.setId(1);
         workoutDay1.setRoutine(activeRoutine);
         workoutDay1.setDayNumber(1);
         workoutDay1.setDayName("Chest Day");
@@ -97,7 +97,7 @@ class ReadServiceTest {
         workoutDay1.setSets(new ArrayList<>());
 
         workoutDay2 = new WorkoutDay();
-        workoutDay2.setId(2L);
+        workoutDay2.setId(2);
         workoutDay2.setRoutine(activeRoutine);
         workoutDay2.setDayNumber(2);
         workoutDay2.setDayName("Back Day");
@@ -119,10 +119,10 @@ class ReadServiceTest {
 
         // Then
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getId()).isEqualTo(1L);
+        assertThat(result.get(0).getId()).isEqualTo(1);
         assertThat(result.get(0).getName()).isEqualTo("Chest");
         assertThat(result.get(0).getDescription()).isEqualTo("Chest muscles");
-        assertThat(result.get(1).getId()).isEqualTo(2L);
+        assertThat(result.get(1).getId()).isEqualTo(2);
         assertThat(result.get(1).getName()).isEqualTo("Back");
         verify(muscleGroupRepository, times(1)).findAll();
     }
@@ -217,48 +217,48 @@ class ReadServiceTest {
         // Given
         activeRoutine.getWorkoutDays().add(workoutDay1);
         activeRoutine.getWorkoutDays().add(workoutDay2);
-        when(workoutRoutineRepository.findByIdWithDetails(1L)).thenReturn(Optional.of(activeRoutine));
+        when(workoutRoutineRepository.findByIdWithDetails(1)).thenReturn(Optional.of(activeRoutine));
 
         // When
-        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1L);
+        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1);
 
         // Then
         assertThat(result).isPresent();
-        assertThat(result.get().getId()).isEqualTo(1L);
+        assertThat(result.get().getId()).isEqualTo(1);
         assertThat(result.get().getName()).isEqualTo("5-Day Split");
         assertThat(result.get().getWorkoutDays()).hasSize(2);
         assertThat(result.get().getWorkoutDays().get(0).getDayName()).isEqualTo("Chest Day");
         assertThat(result.get().getWorkoutDays().get(1).getDayName()).isEqualTo("Back Day");
-        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(1L);
+        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(1);
     }
 
     @Test
     @DisplayName("getRoutineById - should return empty Optional for non-existent routine")
     void getRoutineById_shouldReturnEmptyOptionalForNonExistentRoutine() {
         // Given
-        when(workoutRoutineRepository.findByIdWithDetails(999L)).thenReturn(Optional.empty());
+        when(workoutRoutineRepository.findByIdWithDetails(999)).thenReturn(Optional.empty());
 
         // When
-        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(999L);
+        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(999);
 
         // Then
         assertThat(result).isEmpty();
-        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(999L);
+        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(999);
     }
 
     @Test
     @DisplayName("getRoutineById - should return routine with empty workout days list")
     void getRoutineById_shouldReturnRoutineWithEmptyWorkoutDaysList() {
         // Given
-        when(workoutRoutineRepository.findByIdWithDetails(1L)).thenReturn(Optional.of(activeRoutine));
+        when(workoutRoutineRepository.findByIdWithDetails(1)).thenReturn(Optional.of(activeRoutine));
 
         // When
-        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1L);
+        Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1);
 
         // Then
         assertThat(result).isPresent();
         assertThat(result.get().getWorkoutDays()).isEmpty();
-        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(1L);
+        verify(workoutRoutineRepository, times(1)).findByIdWithDetails(1);
     }
 
     @Test
@@ -266,46 +266,46 @@ class ReadServiceTest {
     void getWorkoutDaysByRoutineId_shouldReturnListOfWorkoutDaysForRoutine() {
         // Given
         List<WorkoutDay> workoutDays = Arrays.asList(workoutDay1, workoutDay2);
-        when(workoutDayRepository.findByRoutineIdWithSets(1L)).thenReturn(workoutDays);
+        when(workoutDayRepository.findByRoutineIdWithSets(1)).thenReturn(workoutDays);
 
         // When
-        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(1L);
+        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(1);
 
         // Then
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getDayNumber()).isEqualTo(1);
         assertThat(result.get(0).getDayName()).isEqualTo("Chest Day");
-        assertThat(result.get(0).getRoutineId()).isEqualTo(1L);
+        assertThat(result.get(0).getRoutineId()).isEqualTo(1);
         assertThat(result.get(1).getDayNumber()).isEqualTo(2);
         assertThat(result.get(1).getDayName()).isEqualTo("Back Day");
-        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(1L);
+        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(1);
     }
 
     @Test
     @DisplayName("getWorkoutDaysByRoutineId - should return empty list when routine has no days")
     void getWorkoutDaysByRoutineId_shouldReturnEmptyListWhenRoutineHasNoDays() {
         // Given
-        when(workoutDayRepository.findByRoutineIdWithSets(1L)).thenReturn(new ArrayList<>());
+        when(workoutDayRepository.findByRoutineIdWithSets(1)).thenReturn(new ArrayList<>());
 
         // When
-        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(1L);
+        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(1);
 
         // Then
         assertThat(result).isEmpty();
-        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(1L);
+        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(1);
     }
 
     @Test
     @DisplayName("getWorkoutDaysByRoutineId - should return empty list for non-existent routine")
     void getWorkoutDaysByRoutineId_shouldReturnEmptyListForNonExistentRoutine() {
         // Given
-        when(workoutDayRepository.findByRoutineIdWithSets(999L)).thenReturn(new ArrayList<>());
+        when(workoutDayRepository.findByRoutineIdWithSets(999)).thenReturn(new ArrayList<>());
 
         // When
-        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(999L);
+        List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(999);
 
         // Then
         assertThat(result).isEmpty();
-        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(999L);
+        verify(workoutDayRepository, times(1)).findByRoutineIdWithSets(999);
     }
 }
