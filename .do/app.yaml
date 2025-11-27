@@ -35,7 +35,7 @@ services:
         scope: RUN_TIME
         value: ${DB_PASSWORD}
     health_check:
-      http_path: /actuator/health
+      http_path: /api/v1/actuator/health
       initial_delay_seconds: 30
 
 
