@@ -99,8 +99,7 @@ if [[ ! -s "$APP_SPEC_RENDERED" ]]; then
   exit 1
 fi
 
-echo ">> Rendered spec preview (first 50 lines):"
-head -n 50 "$APP_SPEC_RENDERED"
+echo ">> Rendered spec saved to: $APP_SPEC_RENDERED"
 
 echo ""
 echo ">> Validating rendered spec..."
@@ -122,8 +121,8 @@ if [[ -z "$APP_ID" ]]; then
     echo "Error creating app:" >&2
     echo "$CREATE_RESPONSE" >&2
     echo "" >&2
-    echo "Rendered spec file:" >&2
-    cat "$APP_SPEC_RENDERED" >&2
+    echo "Rendered spec file location: $APP_SPEC_RENDERED" >&2
+    echo "(Spec file contains sensitive data and is not displayed)" >&2
     exit 1
   fi
   APP_ID=$(echo "$CREATE_RESPONSE" | jq -r '.app.id // .id // empty')
@@ -139,8 +138,8 @@ else
     echo "Error updating app:" >&2
     echo "$UPDATE_RESPONSE" >&2
     echo "" >&2
-    echo "Rendered spec file:" >&2
-    cat "$APP_SPEC_RENDERED" >&2
+    echo "Rendered spec file location: $APP_SPEC_RENDERED" >&2
+    echo "(Spec file contains sensitive data and is not displayed)" >&2
     exit 1
   fi
   echo "   Updated app: $APP_ID"

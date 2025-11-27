@@ -117,7 +117,7 @@ if ! doctl databases user list "$DB_CLUSTER_ID" --output json | jq -e '.[] | sel
       APP_DB_PASSWORD=$(echo "$USER_JSON" | jq -r '.[0].password')
       echo "   Created user $APP_DB_USER and captured password"
       echo "   ⚠️  IMPORTANT: Save this password securely!"
-      echo "   Password: $APP_DB_PASSWORD"
+      echo "   Password: ${APP_DB_PASSWORD:0:4}... (hidden for security)"
       break
     else
       retry=$((retry + 1))

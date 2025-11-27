@@ -296,8 +296,6 @@ jobs:
           sed -i '/# Remove the line below if your image is public/d' .do/app.rendered.yaml
           
           echo "✓ Rendered app spec"
-          echo "Preview (first 30 lines):"
-          head -n 30 .do/app.rendered.yaml
 
       - name: Merge app spec with existing services
         id: merge-spec
@@ -310,10 +308,7 @@ jobs:
             exit 1
           fi
           
-          # Show rendered spec for debugging
-          echo ">> Rendered service spec:"
-          cat .do/app.rendered.yaml
-          echo ""
+          # Validate rendered spec exists (don't output contents to avoid leaking secrets)
           
           # Use merge script to create merged spec (automatically detects services in spec)
           chmod +x scripts/merge-app-spec.sh
@@ -345,8 +340,8 @@ jobs:
               echo "Error creating app (exit code: $CREATE_EXIT_CODE):" >&2
               echo "$CREATE_RESPONSE" >&2
               echo "" >&2
-              echo "Spec file:" >&2
-              cat "$MERGED_SPEC" >&2
+              echo "Spec file location: $MERGED_SPEC" >&2
+              echo "(Spec file contains sensitive data and is not displayed)" >&2
               exit 1
             fi
             
@@ -370,8 +365,8 @@ jobs:
               echo "Error updating app:" >&2
               echo "$UPDATE_RESPONSE" >&2
               echo "" >&2
-              echo "Merged spec file:" >&2
-              cat "$MERGED_SPEC" >&2
+              echo "Merged spec file location: $MERGED_SPEC" >&2
+              echo "(Spec file contains sensitive data and is not displayed)" >&2
               exit 1
             fi
             echo "Updated app: $APP_ID (preserved existing services)"

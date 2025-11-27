@@ -194,10 +194,6 @@ yq eval -P "$MERGED_JSON" > "$OUTPUT_FILE"
 rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
 
 echo "✓ Merged spec created: $OUTPUT_FILE"
-echo ""
-echo ">> Merged spec preview (first 50 lines):"
-head -n 50 "$OUTPUT_FILE"
-echo ""
 
 # Validate merged spec
 echo ">> Validating merged spec..."
