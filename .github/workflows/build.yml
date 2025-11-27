@@ -124,6 +124,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq gettext-base
+          # Install yq for YAML manipulation
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
      
       - name: Provision database
         id: provision-db
@@ -296,8 +299,8 @@ jobs:
           echo "Preview (first 30 lines):"
           head -n 30 .do/app.rendered.yaml
 
-      - name: Create or update App Platform app
-        id: app-setup
+      - name: Merge app spec with existing services
+        id: merge-spec
         env:
           APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
         run: |
@@ -308,16 +311,26 @@ jobs:
           fi
           
           # Show rendered spec for debugging
-          echo ">> Rendered app spec:"
+          echo ">> Rendered service spec:"
           cat .do/app.rendered.yaml
           echo ""
           
-          # Validate spec
-          echo ">> Validating app spec..."
-          if doctl apps spec validate .do/app.rendered.yaml 2>&1; then
-            echo "✓ Spec validation passed"
-          else
-            echo "⚠️  Spec validation failed, but continuing..."
+          # Use merge script to create merged spec (automatically detects services in spec)
+          chmod +x scripts/merge-app-spec.sh
+          ./scripts/merge-app-spec.sh .do/app.rendered.yaml "$APP_NAME" .do/app.merged.yaml
+          
+          echo "merged_spec_file=.do/app.merged.yaml" >> $GITHUB_OUTPUT
+
+      - name: Create or update App Platform app
+        id: app-setup
+        env:
+          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+        run: |
+          MERGED_SPEC="${{ steps.merge-spec.outputs.merged_spec_file }}"
+          
+          if [ ! -f "$MERGED_SPEC" ]; then
+            echo "Error: Merged spec file not found: $MERGED_SPEC" >&2
+            exit 1
           fi
           
           # Get existing app ID if it exists
@@ -325,15 +338,15 @@ jobs:
           
           if [ -z "$APP_ID" ]; then
             echo "Creating new app..."
-            CREATE_RESPONSE=$(doctl apps create --spec .do/app.rendered.yaml --output json 2>&1)
+            CREATE_RESPONSE=$(doctl apps create --spec "$MERGED_SPEC" --output json 2>&1)
             CREATE_EXIT_CODE=$?
             
             if [ $CREATE_EXIT_CODE -ne 0 ]; then
               echo "Error creating app (exit code: $CREATE_EXIT_CODE):" >&2
               echo "$CREATE_RESPONSE" >&2
               echo "" >&2
-              echo "Rendered spec file:" >&2
-              cat .do/app.rendered.yaml >&2
+              echo "Spec file:" >&2
+              cat "$MERGED_SPEC" >&2
               exit 1
             fi
             
@@ -353,15 +366,15 @@ jobs:
             echo "Created app: $APP_ID"
           else
             echo "Updating existing app: $APP_ID"
-            if ! UPDATE_RESPONSE=$(doctl apps update "$APP_ID" --spec .do/app.rendered.yaml --output json 2>&1); then
+            if ! UPDATE_RESPONSE=$(doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json 2>&1); then
               echo "Error updating app:" >&2
               echo "$UPDATE_RESPONSE" >&2
               echo "" >&2
-              echo "Rendered spec file:" >&2
-              cat .do/app.rendered.yaml >&2
+              echo "Merged spec file:" >&2
+              cat "$MERGED_SPEC" >&2
               exit 1
             fi
-            echo "Updated app: $APP_ID"
+            echo "Updated app: $APP_ID (preserved existing services)"
           fi
           
           echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
