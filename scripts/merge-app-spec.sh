@@ -95,6 +95,29 @@ MERGED_JSON_TMP=$(mktemp)
 yq eval -o json "$CURRENT_SPEC_FILE" > "$CURRENT_JSON"
 yq eval -o json "$NEW_SPEC_FILE" > "$NEW_JSON"
 
+# Check for routing conflicts: ingress.rules and component routes are mutually exclusive
+HAS_INGRESS=$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$CURRENT_JSON" 2>/dev/null && echo "true" || echo "false")
+HAS_COMPONENT_ROUTES_NEW=$(jq -e '[.services[]?.routes[]?] | length > 0' "$NEW_JSON" 2>/dev/null && echo "true" || echo "false")
+HAS_COMPONENT_ROUTES_EXISTING=$(jq -e '[.services[]?.routes[]?] | length > 0' "$CURRENT_JSON" 2>/dev/null && echo "true" || echo "false")
+
+# If new spec uses component routes, remove ingress from existing spec
+if [ "$HAS_INGRESS" = "true" ] && [ "$HAS_COMPONENT_ROUTES_NEW" = "true" ]; then
+  echo ">> Warning: Existing app uses ingress.rules, but new spec uses component routes"
+  echo ">> Removing ingress.rules from existing spec to use component-level routes"
+  # Remove ingress from current spec
+  jq 'del(.ingress)' "$CURRENT_JSON" > "$CURRENT_JSON.tmp"
+  mv "$CURRENT_JSON.tmp" "$CURRENT_JSON"
+fi
+
+# If existing spec uses component routes but new spec has ingress, remove ingress from new spec
+if [ "$HAS_COMPONENT_ROUTES_EXISTING" = "true" ] && [ "$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$NEW_JSON" 2>/dev/null && echo "true" || echo "false")" = "true" ]; then
+  echo ">> Warning: Existing app uses component routes, but new spec uses ingress.rules"
+  echo ">> Removing ingress.rules from new spec to use component-level routes"
+  # Remove ingress from new spec
+  jq 'del(.ingress)' "$NEW_JSON" > "$NEW_JSON.tmp"
+  mv "$NEW_JSON.tmp" "$NEW_JSON"
+fi
+
 # Get all service names from new spec
 NEW_SERVICE_NAMES=$(jq -r '.services[].name' "$NEW_JSON")
 
