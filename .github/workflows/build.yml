@@ -288,7 +288,12 @@ jobs:
           envsubst < .do/app.yaml > .do/app.rendered.yaml
           
           # Remove empty registry_credentials if needed
+          # Note: DigitalOcean rejects registry_credentials: "" (empty string)
+          # For public images, the field should be omitted entirely
+          # In this workflow, GITHUB_REGISTRY_CREDENTIALS is always set, but we check
+          # as a safety measure and for consistency with deploy-service.sh
           if grep -q 'registry_credentials: ""' .do/app.rendered.yaml; then
+            echo "   Removing empty registry_credentials field (public image, no credentials needed)"
             sed -i '/registry_credentials: ""$/d' .do/app.rendered.yaml
           fi
           
