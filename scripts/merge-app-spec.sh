@@ -210,8 +210,23 @@ done
 
 # Final result is in MERGED_JSON
 
+# Final check: Ensure ingress.rules is removed if component routes exist (they are mutually exclusive)
+# This is a safety check in case ingress was preserved during merging
+HAS_INGRESS_FINAL=$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
+HAS_COMPONENT_ROUTES_FINAL=$(jq -e '[.services[]?.routes[]?] | length > 0' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
+
+if [ "$HAS_INGRESS_FINAL" = "true" ] && [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
+  echo ">> Removing ingress.rules from merged spec (component routes are present)"
+  jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+  mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+fi
+
 # Convert back to YAML
 yq eval -P "$MERGED_JSON" > "$OUTPUT_FILE"
+
+# Remove registry_credentials field if present (not a valid field in DO App Platform spec)
+# GHCR authentication is handled through DigitalOcean's registry configuration, not in app spec
+sed -i '/registry_credentials:/d' "$OUTPUT_FILE"
 
 # Cleanup temporary files
 rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
