@@ -324,13 +324,33 @@ jobs:
           # Show final merged spec structure (sanitized) for debugging
           echo ""
           echo ">> Final merged spec structure (checking for ingress/routes conflicts):"
+          echo "Checking for ingress.rules:"
           if command -v yq >/dev/null 2>&1; then
-            yq eval '.ingress // "No ingress found"' .do/app.merged.yaml
+            INGRESS_CHECK=$(yq eval '.ingress // empty' .do/app.merged.yaml 2>/dev/null || echo "empty")
+            if [ -z "$INGRESS_CHECK" ] || [ "$INGRESS_CHECK" = "null" ] || [ "$INGRESS_CHECK" = "empty" ]; then
+              echo "  ✓ No ingress.rules found (good - component routes will work)"
+            else
+              echo "  ⚠️  WARNING: ingress.rules found in merged spec:"
+              echo "$INGRESS_CHECK" | head -20
+            fi
+            echo ""
             echo "Services with routes:"
-            yq eval '.services[].routes // "No routes"' .do/app.merged.yaml
+            yq eval '.services[] | select(.routes != null) | "  - \(.name): \(.routes | length) route(s)"' .do/app.merged.yaml 2>/dev/null || echo "  No services with routes found"
           else
-            echo "yq not available, showing first 60 lines:"
-            head -n 60 .do/app.merged.yaml | sed 's/value:.*DB_PASSWORD.*/value: ***HIDDEN***/g'
+            echo "yq not available, using grep to check:"
+            if grep -q "ingress:" .do/app.merged.yaml; then
+              echo "  ⚠️  WARNING: ingress found in merged spec"
+              grep -A 5 "ingress:" .do/app.merged.yaml | head -10
+            else
+              echo "  ✓ No ingress found (good)"
+            fi
+            echo ""
+            if grep -q "routes:" .do/app.merged.yaml; then
+              echo "Services with routes found"
+              grep -B 2 "routes:" .do/app.merged.yaml | head -20
+            else
+              echo "No services with routes found"
+            fi
           fi
 
       - name: Create or update App Platform app

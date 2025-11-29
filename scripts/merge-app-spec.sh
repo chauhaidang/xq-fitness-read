@@ -52,23 +52,23 @@ if ! command -v yq >/dev/null; then
   exit 1
 fi
 
-echo ">> Merging service spec"
-echo "   New spec file: $NEW_SPEC_FILE"
-echo "   App name: $APP_NAME"
-echo "   Output file: $OUTPUT_FILE"
-echo ""
+echo ">> Merging service spec" >&2
+echo "   New spec file: $NEW_SPEC_FILE" >&2
+echo "   App name: $APP_NAME" >&2
+echo "   Output file: $OUTPUT_FILE" >&2
+echo "" >&2
 
 # Get existing app ID if it exists
 APP_ID=$(doctl apps list --output json 2>/dev/null | jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
 
 if [ -z "$APP_ID" ]; then
-  echo ">> App '$APP_NAME' does not exist, using new spec as-is"
+  echo ">> App '$APP_NAME' does not exist, using new spec as-is" >&2
   cp "$NEW_SPEC_FILE" "$OUTPUT_FILE"
-  echo "✓ Created merged spec: $OUTPUT_FILE"
+  echo "✓ Created merged spec: $OUTPUT_FILE" >&2
   exit 0
 fi
 
-echo ">> App '$APP_NAME' exists (ID: $APP_ID), fetching current spec..."
+echo ">> App '$APP_NAME' exists (ID: $APP_ID), fetching current spec..." >&2
 
 # Fetch current app spec
 CURRENT_SPEC=$(doctl apps spec get "$APP_ID" --output yaml 2>/dev/null || echo "")
@@ -76,11 +76,11 @@ CURRENT_SPEC=$(doctl apps spec get "$APP_ID" --output yaml 2>/dev/null || echo "
 if [ -z "$CURRENT_SPEC" ]; then
   echo "⚠️  Warning: Could not fetch current spec, using new spec as-is (may remove other services)" >&2
   cp "$NEW_SPEC_FILE" "$OUTPUT_FILE"
-  echo "✓ Created merged spec: $OUTPUT_FILE"
+  echo "✓ Created merged spec: $OUTPUT_FILE" >&2
   exit 0
 fi
 
-echo ">> Merging services from new spec into existing app spec..."
+echo ">> Merging services from new spec into existing app spec..." >&2
 
 # Save current spec to temporary file
 CURRENT_SPEC_FILE=$(mktemp)
@@ -102,8 +102,8 @@ HAS_COMPONENT_ROUTES_EXISTING=$(jq -e '[.services[]?.routes[]?] | length > 0' "$
 
 # If new spec uses component routes, remove ingress from existing spec
 if [ "$HAS_INGRESS" = "true" ] && [ "$HAS_COMPONENT_ROUTES_NEW" = "true" ]; then
-  echo ">> Warning: Existing app uses ingress.rules, but new spec uses component routes"
-  echo ">> Removing ingress.rules from existing spec to use component-level routes"
+  echo ">> Warning: Existing app uses ingress.rules, but new spec uses component routes" >&2
+  echo ">> Removing ingress.rules from existing spec to use component-level routes" >&2
   # Remove ingress from current spec
   jq 'del(.ingress)' "$CURRENT_JSON" > "$CURRENT_JSON.tmp"
   mv "$CURRENT_JSON.tmp" "$CURRENT_JSON"
@@ -111,8 +111,8 @@ fi
 
 # If existing spec uses component routes but new spec has ingress, remove ingress from new spec
 if [ "$HAS_COMPONENT_ROUTES_EXISTING" = "true" ] && [ "$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$NEW_JSON" 2>/dev/null && echo "true" || echo "false")" = "true" ]; then
-  echo ">> Warning: Existing app uses component routes, but new spec uses ingress.rules"
-  echo ">> Removing ingress.rules from new spec to use component-level routes"
+  echo ">> Warning: Existing app uses component routes, but new spec uses ingress.rules" >&2
+  echo ">> Removing ingress.rules from new spec to use component-level routes" >&2
   # Remove ingress from new spec
   jq 'del(.ingress)' "$NEW_JSON" > "$NEW_JSON.tmp"
   mv "$NEW_JSON.tmp" "$NEW_JSON"
@@ -127,15 +127,15 @@ if [ -z "$NEW_SERVICE_NAMES" ]; then
   exit 1
 fi
 
-echo ">> Services to merge: $(echo "$NEW_SERVICE_NAMES" | tr '\n' ' ')"
-echo ""
+echo ">> Services to merge: $(echo "$NEW_SERVICE_NAMES" | tr '\n' ' ')" >&2
+echo "" >&2
 
 # Check if services actually changed to avoid unnecessary redeployments
 # (DigitalOcean redeploys ALL services when app spec is updated)
 SERVICES_CHANGED=false
 
 for SERVICE_NAME in $NEW_SERVICE_NAMES; do
-  echo "  - Checking service: $SERVICE_NAME"
+  echo "  - Checking service: $SERVICE_NAME" >&2
   
   # Extract the service from new spec
   NEW_SERVICE_JSON=$(jq '.services[] | select(.name == "'"$SERVICE_NAME"'")' "$NEW_JSON")
@@ -149,7 +149,7 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
   EXISTING_SERVICE_JSON=$(jq '.services[] | select(.name == "'"$SERVICE_NAME"'")' "$CURRENT_JSON")
   
   if [ -z "$EXISTING_SERVICE_JSON" ] || [ "$EXISTING_SERVICE_JSON" == "null" ]; then
-    echo "    → Service is new, will be added"
+    echo "    → Service is new, will be added" >&2
     SERVICES_CHANGED=true
   else
     # Compare service configs (normalize JSON for comparison)
@@ -157,28 +157,28 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
     EXISTING_SERVICE_NORMALIZED=$(echo "$EXISTING_SERVICE_JSON" | jq -S '.')
     
     if [ "$NEW_SERVICE_NORMALIZED" != "$EXISTING_SERVICE_NORMALIZED" ]; then
-      echo "    → Service configuration changed, will be updated"
+      echo "    → Service configuration changed, will be updated" >&2
       SERVICES_CHANGED=true
     else
-      echo "    ✓ Service configuration unchanged, skipping update"
-      echo "      (This prevents unnecessary redeployment of other services)"
+      echo "    ✓ Service configuration unchanged, skipping update" >&2
+      echo "      (This prevents unnecessary redeployment of other services)" >&2
     fi
   fi
 done
 
-echo ""
+echo "" >&2
 
 # If no services changed, use current spec to avoid redeployment
 if [ "$SERVICES_CHANGED" = false ]; then
-  echo ">> No service changes detected. Using current spec to avoid redeployment."
+  echo ">> No service changes detected. Using current spec to avoid redeployment." >&2
   cp "$CURRENT_SPEC_FILE" "$OUTPUT_FILE"
   rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
-  echo "✓ No changes needed, using existing spec: $OUTPUT_FILE"
+  echo "✓ No changes needed, using existing spec: $OUTPUT_FILE" >&2
   exit 0
 fi
 
 # Merge services that changed
-echo ">> Merging changed services into app spec..."
+echo ">> Merging changed services into app spec..." >&2
 cp "$CURRENT_JSON" "$MERGED_JSON_TMP"
 
 for SERVICE_NAME in $NEW_SERVICE_NAMES; do
@@ -216,7 +216,7 @@ HAS_INGRESS_FINAL=$(jq -e '.ingress.rules != null and (.ingress.rules | length >
 HAS_COMPONENT_ROUTES_FINAL=$(jq -e '[.services[]?.routes[]?] | length > 0' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
 
 if [ "$HAS_INGRESS_FINAL" = "true" ] && [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
-  echo ">> Removing ingress.rules from merged spec (component routes are present)"
+  echo ">> Removing ingress.rules from merged spec (component routes are present)" >&2
   jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp"
   mv "$MERGED_JSON.tmp" "$MERGED_JSON"
 fi
@@ -231,20 +231,21 @@ sed -i '/registry_credentials:/d' "$OUTPUT_FILE"
 # Cleanup temporary files
 rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
 
-echo "✓ Merged spec created: $OUTPUT_FILE"
-echo ""
-echo ">> Merged spec preview (sanitized - sensitive values hidden):"
+echo "✓ Merged spec created: $OUTPUT_FILE" >&2
+echo "" >&2
+echo ">> Merged spec preview (sanitized - sensitive values hidden):" >&2
 # Show spec but mask sensitive values
 sed 's/value:.*DB_PASSWORD.*/value: ***HIDDEN***/g' "$OUTPUT_FILE" | \
   sed 's/registry_credentials:.*/registry_credentials: ***HIDDEN***/g' | \
-  head -n 50
-echo ""
+  sed 's/value:.*PASSWORD.*/value: ***HIDDEN***/g' | \
+  head -n 50 >&2
+echo "" >&2
 
 # Validate merged spec
-echo ">> Validating merged spec..."
+echo ">> Validating merged spec..." >&2
 if doctl apps spec validate "$OUTPUT_FILE" 2>&1; then
-  echo "✓ Spec validation passed"
+  echo "✓ Spec validation passed" >&2
 else
-  echo "⚠️  Spec validation failed or not available, but spec file created"
+  echo "⚠️  Spec validation failed or not available, but spec file created" >&2
 fi
 
