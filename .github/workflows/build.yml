@@ -260,107 +260,48 @@ jobs:
           REGION: ${{ secrets.REGION || 'sgp1' }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag || 'latest' }}
-          GITHUB_REGISTRY_CREDENTIALS: ${{ env.GITHUB_OWNER }}:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           DB_USER: ${{ steps.provision-db.outputs.db_user }}
           DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
           SPRING_DATASOURCE_URL: ${{ steps.provision-db.outputs.spring_datasource_url }}
         run: |
-          # Export all required variables for envsubst
-          export APP_NAME="${APP_NAME}"
-          export REGION="${REGION}"
-          export IMAGE_NAME="${IMAGE_NAME}"
-          export IMAGE_TAG="${IMAGE_TAG:-latest}"
-          export DB_USER="${DB_USER}"
-          export DB_PASSWORD="${DB_PASSWORD}"
-          export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}"
+          set -euo pipefail
           
-          # Debug: show what will be substituted
-          echo ">> Variables for substitution:"
-          echo "  APP_NAME: $APP_NAME"
-          echo "  REGION: $REGION"
-          echo "  IMAGE_NAME: $IMAGE_NAME"
-          echo "  IMAGE_TAG: $IMAGE_TAG"
-          echo "  DB_USER: $DB_USER"
-          echo "  SPRING_DATASOURCE_URL: $SPRING_DATASOURCE_URL"
-          echo ""
-          
-          # Render .do/app.yaml from template
+          # Render app spec template with environment variables
           envsubst < .do/app.yaml > .do/app.rendered.yaml
           
-          # Remove empty registry_credentials if needed
-          # Note: DigitalOcean rejects registry_credentials: "" (empty string)
-          # For public images, the field should be omitted entirely
-          # In this workflow, GITHUB_REGISTRY_CREDENTIALS is always set, but we check
-          # as a safety measure and for consistency with deploy-service.sh
-          if grep -q 'registry_credentials: ""' .do/app.rendered.yaml; then
-            echo "   Removing empty registry_credentials field (public image, no credentials needed)"
-            sed -i '/registry_credentials: ""$/d' .do/app.rendered.yaml
-          fi
-          
-          # Also remove the comment line
+          # Remove invalid fields (registry_credentials is not a valid field in DO App Platform spec)
+          sed -i '/registry_credentials:/d' .do/app.rendered.yaml
           sed -i '/# Remove the line below if your image is public/d' .do/app.rendered.yaml
           
-          echo "✓ Rendered app spec"
+          echo "✓ Rendered app spec: .do/app.rendered.yaml"
 
       - name: Merge app spec with existing services
         id: merge-spec
         env:
           APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
         run: |
-          # Validate rendered spec exists
+          set -euo pipefail
+          
           if [ ! -f .do/app.rendered.yaml ]; then
             echo "Error: Rendered app spec file not found" >&2
             exit 1
           fi
           
-          # Validate rendered spec exists (don't output contents to avoid leaking secrets)
-          
-          # Use merge script to create merged spec (automatically detects services in spec)
+          # Merge rendered spec with existing app spec (preserves other services)
           chmod +x scripts/merge-app-spec.sh
           ./scripts/merge-app-spec.sh .do/app.rendered.yaml "$APP_NAME" .do/app.merged.yaml
           
-          echo ""
-          echo ">> Showing merged spec (sanitized) to verify ingress removal:"
-          cat .do/app.merged.yaml | sed 's/DB_PASSWORD:.*/DB_PASSWORD: ***HIDDEN***/g' | sed 's/registry_credentials:.*/registry_credentials: ***HIDDEN***/g' | sed 's/value:.*PASSWORD.*/value: ***HIDDEN***/g'
+          # Output merged spec file path
           echo "merged_spec_file=.do/app.merged.yaml" >> $GITHUB_OUTPUT
-          
-          # Show final merged spec structure (sanitized) for debugging
-          echo ""
-          echo ">> Final merged spec structure (checking for ingress/routes conflicts):"
-          echo "Checking for ingress.rules:"
-          if command -v yq >/dev/null 2>&1; then
-            INGRESS_CHECK=$(yq eval '.ingress // empty' .do/app.merged.yaml 2>/dev/null || echo "empty")
-            if [ -z "$INGRESS_CHECK" ] || [ "$INGRESS_CHECK" = "null" ] || [ "$INGRESS_CHECK" = "empty" ]; then
-              echo "  ✓ No ingress.rules found (good - component routes will work)"
-            else
-              echo "  ⚠️  WARNING: ingress.rules found in merged spec:"
-              echo "$INGRESS_CHECK" | head -20
-            fi
-            echo ""
-            echo "Services with routes:"
-            yq eval '.services[] | select(.routes != null) | "  - \(.name): \(.routes | length) route(s)"' .do/app.merged.yaml 2>/dev/null || echo "  No services with routes found"
-          else
-            echo "yq not available, using grep to check:"
-            if grep -q "ingress:" .do/app.merged.yaml; then
-              echo "  ⚠️  WARNING: ingress found in merged spec"
-              grep -A 5 "ingress:" .do/app.merged.yaml | head -10
-            else
-              echo "  ✓ No ingress found (good)"
-            fi
-            echo ""
-            if grep -q "routes:" .do/app.merged.yaml; then
-              echo "Services with routes found"
-              grep -B 2 "routes:" .do/app.merged.yaml | head -20
-            else
-              echo "No services with routes found"
-            fi
-          fi
+          echo "✓ Merged app spec: .do/app.merged.yaml"
 
       - name: Create or update App Platform app
         id: app-setup
         env:
           APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
         run: |
+          set -euo pipefail
+          
           MERGED_SPEC="${{ steps.merge-spec.outputs.merged_spec_file }}"
           
           if [ ! -f "$MERGED_SPEC" ]; then
@@ -368,57 +309,39 @@ jobs:
             exit 1
           fi
           
-          # Get existing app ID if it exists
-          APP_ID=$(doctl apps list --output json 2>/dev/null | jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
+          # Get existing app ID
+          APP_ID=$(doctl apps list --output json 2>/dev/null | \
+            jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
           
           if [ -z "$APP_ID" ]; then
-            echo "Creating new app..."
+            # Create new app
+            echo "Creating new app: $APP_NAME"
             CREATE_RESPONSE=$(doctl apps create --spec "$MERGED_SPEC" --output json 2>&1)
-            CREATE_EXIT_CODE=$?
             
-            if [ $CREATE_EXIT_CODE -ne 0 ]; then
-              echo "Error creating app (exit code: $CREATE_EXIT_CODE):" >&2
-              echo "$CREATE_RESPONSE" >&2
-              echo "" >&2
-              echo "Spec file location: $MERGED_SPEC" >&2
-              echo "(Spec file contains sensitive data and is not displayed)" >&2
-              exit 1
-            fi
-            
-            # Check if response is valid JSON
-            if ! echo "$CREATE_RESPONSE" | jq empty 2>/dev/null; then
-              echo "Error: doctl returned non-JSON response:" >&2
+            if ! echo "$CREATE_RESPONSE" | jq -e '.app.id // .id' >/dev/null 2>&1; then
+              echo "Error creating app:" >&2
               echo "$CREATE_RESPONSE" >&2
               exit 1
             fi
             
-            APP_ID=$(echo "$CREATE_RESPONSE" | jq -r '.app.id // .id // empty')
-            if [ -z "$APP_ID" ]; then
-              echo "Error: Could not extract app ID from create response:" >&2
-              echo "$CREATE_RESPONSE" >&2
-              exit 1
-            fi
-            echo "Created app: $APP_ID"
+            APP_ID=$(echo "$CREATE_RESPONSE" | jq -r '.app.id // .id')
+            echo "✓ Created app: $APP_ID"
           else
+            # Update existing app
             echo "Updating existing app: $APP_ID"
-            if ! UPDATE_RESPONSE=$(doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json 2>&1); then
-              echo "Error updating app:" >&2
-              echo "$UPDATE_RESPONSE" >&2
-              echo "" >&2
-              echo "Merged spec file location: $MERGED_SPEC" >&2
-              echo "(Spec file contains sensitive data and is not displayed)" >&2
+            if ! doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json >/dev/null 2>&1; then
+              echo "Error updating app" >&2
               exit 1
             fi
-            echo "Updated app: $APP_ID (preserved existing services)"
+            echo "✓ Updated app: $APP_ID"
           fi
           
           echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
-          echo "✓ App ID: $APP_ID"
 
       - name: Deploy to App Platform
         uses: digitalocean/app_action/deploy@v2
         with:
           token: ${{ secrets.DO_TOKEN }}
           app_name: ${{ secrets.APP_NAME || 'xq-fitness' }}
-          app_spec_location: .do/app.rendered.yaml
+          app_spec_location: ${{ steps.merge-spec.outputs.merged_spec_file }}
           print_deploy_logs: true
