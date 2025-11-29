@@ -179,6 +179,13 @@ fi
 
 # Merge services that changed
 echo ">> Merging changed services into app spec..." >&2
+# Start with current JSON (which should already have ingress removed if needed)
+# But ensure ingress is removed before we start merging
+if [ "$HAS_COMPONENT_ROUTES_NEW" = "true" ]; then
+  echo ">> Ensuring ingress is removed from current spec before merging..." >&2
+  jq 'del(.ingress)' "$CURRENT_JSON" > "$CURRENT_JSON.tmp"
+  mv "$CURRENT_JSON.tmp" "$CURRENT_JSON"
+fi
 cp "$CURRENT_JSON" "$MERGED_JSON_TMP"
 
 for SERVICE_NAME in $NEW_SERVICE_NAMES; do
@@ -210,19 +217,73 @@ done
 
 # Final result is in MERGED_JSON
 
-# Final check: Ensure ingress.rules is removed if component routes exist (they are mutually exclusive)
-# This is a safety check in case ingress was preserved during merging
-HAS_INGRESS_FINAL=$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
+# Final check: ALWAYS remove ingress.rules if ANY component routes exist (they are mutually exclusive)
+# This is critical - DigitalOcean rejects specs with both ingress.rules and component routes
+HAS_INGRESS_FINAL=$(jq -e '.ingress != null' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
 HAS_COMPONENT_ROUTES_FINAL=$(jq -e '[.services[]?.routes[]?] | length > 0' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
 
-if [ "$HAS_INGRESS_FINAL" = "true" ] && [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
-  echo ">> Removing ingress.rules from merged spec (component routes are present)" >&2
+echo ">> Final check: ingress=$HAS_INGRESS_FINAL, component_routes=$HAS_COMPONENT_ROUTES_FINAL" >&2
+
+if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
+  if [ "$HAS_INGRESS_FINAL" = "true" ]; then
+    echo ">> CRITICAL: Removing ingress.rules from merged spec (component routes are present)" >&2
+    jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+    mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+    echo ">> Ingress removed successfully" >&2
+  else
+    echo ">> No ingress found, component routes are safe" >&2
+  fi
+else
+  echo ">> No component routes found, keeping ingress if present" >&2
+fi
+
+# Double-check after removal
+HAS_INGRESS_AFTER=$(jq -e '.ingress != null' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
+if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ] && [ "$HAS_INGRESS_AFTER" = "true" ]; then
+  echo ">> ERROR: Ingress still present after removal attempt!" >&2
+  echo ">> Attempting force removal..." >&2
+  jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp" 2>&1
+  if [ $? -eq 0 ]; then
+    mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+    echo ">> Force removal successful" >&2
+  else
+    echo ">> Force removal failed, showing merged JSON structure:" >&2
+    jq '.' "$MERGED_JSON" | head -50 >&2
+    exit 1
+  fi
+fi
+
+# Final aggressive removal: Convert to JSON, remove ingress, convert back
+# This ensures ingress is definitely gone before creating YAML
+if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
+  echo ">> Final aggressive ingress removal before YAML conversion..." >&2
   jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp"
   mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+  
+  # Verify removal
+  INGRESS_CHECK=$(jq -e '.ingress // empty' "$MERGED_JSON" 2>/dev/null)
+  if [ -n "$INGRESS_CHECK" ] && [ "$INGRESS_CHECK" != "null" ] && [ "$INGRESS_CHECK" != "{}" ] && [ "$INGRESS_CHECK" != "empty" ]; then
+    echo ">> ERROR: Ingress still exists after removal: $INGRESS_CHECK" >&2
+    echo ">> Attempting alternative removal method..." >&2
+    jq 'with_entries(select(.key != "ingress"))' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+    mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+  fi
+  echo ">> Ingress removal verified" >&2
 fi
 
 # Convert back to YAML
 yq eval -P "$MERGED_JSON" > "$OUTPUT_FILE"
+
+# Final YAML-level check and removal (belt and suspenders approach)
+if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
+  if grep -q "^ingress:" "$OUTPUT_FILE"; then
+    echo ">> WARNING: Ingress found in final YAML, removing with sed..." >&2
+    # Remove ingress block (handles multi-line YAML)
+    awk '/^ingress:/{flag=1} /^[a-zA-Z]/{if(flag) flag=0} !flag' "$OUTPUT_FILE" > "$OUTPUT_FILE.tmp"
+    mv "$OUTPUT_FILE.tmp" "$OUTPUT_FILE"
+    echo ">> Ingress removed from YAML file" >&2
+  fi
+fi
 
 # Remove registry_credentials field if present (not a valid field in DO App Platform spec)
 # GHCR authentication is handled through DigitalOcean's registry configuration, not in app spec

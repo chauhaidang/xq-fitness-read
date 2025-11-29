@@ -318,6 +318,9 @@ jobs:
           # Use merge script to create merged spec (automatically detects services in spec)
           chmod +x scripts/merge-app-spec.sh
           ./scripts/merge-app-spec.sh .do/app.rendered.yaml "$APP_NAME" .do/app.merged.yaml
+          
+          echo ""
+          echo ">> Showing merged spec (sanitized) to verify ingress removal:"
           cat .do/app.merged.yaml | sed 's/DB_PASSWORD:.*/DB_PASSWORD: ***HIDDEN***/g' | sed 's/registry_credentials:.*/registry_credentials: ***HIDDEN***/g' | sed 's/value:.*PASSWORD.*/value: ***HIDDEN***/g'
           echo "merged_spec_file=.do/app.merged.yaml" >> $GITHUB_OUTPUT
           
