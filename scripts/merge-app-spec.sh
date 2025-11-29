@@ -96,17 +96,61 @@ yq eval -o json "$CURRENT_SPEC_FILE" > "$CURRENT_JSON"
 yq eval -o json "$NEW_SPEC_FILE" > "$NEW_JSON"
 
 # Check for routing conflicts: ingress.rules and component routes are mutually exclusive
-HAS_INGRESS=$(jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$CURRENT_JSON" 2>/dev/null && echo "true" || echo "false")
-HAS_COMPONENT_ROUTES_NEW=$(jq -e '[.services[]?.routes[]?] | length > 0' "$NEW_JSON" 2>/dev/null && echo "true" || echo "false")
-HAS_COMPONENT_ROUTES_EXISTING=$(jq -e '[.services[]?.routes[]?] | length > 0' "$CURRENT_JSON" 2>/dev/null && echo "true" || echo "false")
+if jq -e '.ingress.rules != null and (.ingress.rules | length > 0)' "$CURRENT_JSON" >/dev/null 2>&1; then
+  HAS_INGRESS="true"
+else
+  HAS_INGRESS="false"
+fi
 
-# If new spec uses component routes, remove ingress from existing spec
+if jq -e '[.services[]?.routes[]?] | length > 0' "$NEW_JSON" >/dev/null 2>&1; then
+  HAS_COMPONENT_ROUTES_NEW="true"
+else
+  HAS_COMPONENT_ROUTES_NEW="false"
+fi
+
+if jq -e '[.services[]?.routes[]?] | length > 0' "$CURRENT_JSON" >/dev/null 2>&1; then
+  HAS_COMPONENT_ROUTES_EXISTING="true"
+else
+  HAS_COMPONENT_ROUTES_EXISTING="false"
+fi
+
+echo ">> Routing check: HAS_INGRESS=$HAS_INGRESS, HAS_COMPONENT_ROUTES_NEW=$HAS_COMPONENT_ROUTES_NEW, HAS_COMPONENT_ROUTES_EXISTING=$HAS_COMPONENT_ROUTES_EXISTING" >&2
+
+# If new spec uses component routes, convert ingress rules to component routes before removing ingress
 if [ "$HAS_INGRESS" = "true" ] && [ "$HAS_COMPONENT_ROUTES_NEW" = "true" ]; then
   echo ">> Warning: Existing app uses ingress.rules, but new spec uses component routes" >&2
-  echo ">> Removing ingress.rules from existing spec to use component-level routes" >&2
-  # Remove ingress from current spec
-  jq 'del(.ingress)' "$CURRENT_JSON" > "$CURRENT_JSON.tmp"
+  echo ">> Converting ingress.rules to component routes for existing services..." >&2
+  # Convert ingress rules to component routes
+  jq '
+    # First, add routes to services based on ingress rules
+    if .ingress and .ingress.rules then
+      reduce .ingress.rules[] as $rule (.;
+        if $rule.component and $rule.component.name then
+          .services[] |= (
+            if .name == $rule.component.name then
+              # Convert ingress rule to component route
+              .routes = [
+                {
+                  path: ($rule.match.path.prefix // $rule.match.path.exact // "/"),
+                  preserve_path_prefix: false
+                }
+              ]
+            else
+              .
+            end
+          )
+        else
+          .
+        end
+      ) |
+      # Remove ingress after conversion
+      del(.ingress)
+    else
+      .
+    end
+  ' "$CURRENT_JSON" > "$CURRENT_JSON.tmp"
   mv "$CURRENT_JSON.tmp" "$CURRENT_JSON"
+  echo ">> Converted ingress.rules to component routes and removed ingress" >&2
 fi
 
 # If existing spec uses component routes but new spec has ingress, remove ingress from new spec
