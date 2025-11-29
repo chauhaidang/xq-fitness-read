@@ -320,6 +320,18 @@ jobs:
           ./scripts/merge-app-spec.sh .do/app.rendered.yaml "$APP_NAME" .do/app.merged.yaml
           
           echo "merged_spec_file=.do/app.merged.yaml" >> $GITHUB_OUTPUT
+          
+          # Show final merged spec structure (sanitized) for debugging
+          echo ""
+          echo ">> Final merged spec structure (checking for ingress/routes conflicts):"
+          if command -v yq >/dev/null 2>&1; then
+            yq eval '.ingress // "No ingress found"' .do/app.merged.yaml
+            echo "Services with routes:"
+            yq eval '.services[].routes // "No routes"' .do/app.merged.yaml
+          else
+            echo "yq not available, showing first 60 lines:"
+            head -n 60 .do/app.merged.yaml | sed 's/value:.*DB_PASSWORD.*/value: ***HIDDEN***/g'
+          fi
 
       - name: Create or update App Platform app
         id: app-setup

@@ -232,6 +232,13 @@ sed -i '/registry_credentials:/d' "$OUTPUT_FILE"
 rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
 
 echo "✓ Merged spec created: $OUTPUT_FILE"
+echo ""
+echo ">> Merged spec preview (sanitized - sensitive values hidden):"
+# Show spec but mask sensitive values
+sed 's/value:.*DB_PASSWORD.*/value: ***HIDDEN***/g' "$OUTPUT_FILE" | \
+  sed 's/registry_credentials:.*/registry_credentials: ***HIDDEN***/g' | \
+  head -n 50
+echo ""
 
 # Validate merged spec
 echo ">> Validating merged spec..."
