@@ -14,6 +14,8 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/xq-fitness-read-service
   GITHUB_OWNER: ${{ github.repository_owner }}
   SERVICE_NAME: read-service
+  APP_ID": 7960143e-c80f-496d-9992-f24430bb77ff
+  APP_NAME: xq-fitness
 
 jobs:
   unit-tests:
@@ -132,8 +134,8 @@ jobs:
         id: provision-db
         env:
           DO_TOKEN: ${{ secrets.DO_TOKEN }}
-          REGION: ${{ secrets.REGION || 'sgp1' }}
-          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+          REGION: 'sgp1'
+          APP_NAME: 'xq-fitness'
           APP_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           # Provision database (idempotent - safe to run multiple times)
@@ -256,29 +258,52 @@ jobs:
       - name: Render app spec
         id: render-spec
         env:
-          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
-          REGION: ${{ secrets.REGION || 'sgp1' }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          APP_NAME: 'xq-fitness'
+          REGION: 'sgp1'
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag || 'latest' }}
+          GITHUB_REGISTRY_CREDENTIALS: ${{ env.GITHUB_OWNER }}:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          DB_HOST: ${{ steps.provision-db.outputs.db_host }}
+          DB_PORT: ${{ steps.provision-db.outputs.db_port }}
           DB_USER: ${{ steps.provision-db.outputs.db_user }}
           DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
+          DB_NAME: ${{ steps.provision-db.outputs.db_name }}
           SPRING_DATASOURCE_URL: ${{ steps.provision-db.outputs.spring_datasource_url }}
         run: |
-          set -euo pipefail
+          # Export all required variables for envsubst
+          export APP_NAME="${APP_NAME}"
+          export REGION="${REGION}"
+          export IMAGE_NAME="${IMAGE_NAME}"
+          export IMAGE_TAG="${IMAGE_TAG:-latest}"
+          export DB_HOST="${DB_HOST}"
+          export DB_PORT="${DB_PORT}"
+          export DB_USER="${DB_USER}"
+          export DB_PASSWORD="${DB_PASSWORD}"
+          export DB_NAME="${DB_NAME}"
           
-          # Render app spec template with environment variables
+          # Debug: show what will be substituted
+          echo ">> Variables for substitution:"
+          echo "  APP_NAME: $APP_NAME"
+          echo "  REGION: $REGION"
+          echo "  IMAGE_NAME: $IMAGE_NAME"
+          echo "  IMAGE_TAG: $IMAGE_TAG"
+          echo "  DB_HOST: $DB_HOST"
+          echo "  DB_PORT: $DB_PORT"
+          echo "  DB_USER: $DB_USER"
+          echo "  DB_NAME: $DB_NAME"
+          echo ""
+          
+          # Render .do/app.yaml from template
           envsubst < .do/app.yaml > .do/app.rendered.yaml
           
-          # Remove invalid fields (registry_credentials is not a valid field in DO App Platform spec)
-          sed -i '/registry_credentials:/d' .do/app.rendered.yaml
-          sed -i '/# Remove the line below if your image is public/d' .do/app.rendered.yaml
-          
-          echo "✓ Rendered app spec: .do/app.rendered.yaml"
+          echo "✓ Rendered app spec"
+          echo "Preview (first 30 lines):"
+          head -n 30 .do/app.rendered.yaml
 
       - name: Merge app spec with existing services
         id: merge-spec
         env:
-          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
+          APP_NAME: 'xq-fitness'
+          GITHUB_REGISTRY_CREDENTIALS: ${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           
@@ -297,8 +322,6 @@ jobs:
 
       - name: Create or update App Platform app
         id: app-setup
-        env:
-          APP_NAME: ${{ secrets.APP_NAME || 'xq-fitness' }}
         run: |
           set -euo pipefail
           
@@ -309,31 +332,13 @@ jobs:
             exit 1
           fi
           
-          # Get existing app ID
-          APP_ID=$(doctl apps list --output json 2>/dev/null | \
-            jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
-          
-          if [ -z "$APP_ID" ]; then
-            # Create new app
-            echo "Creating new app: $APP_NAME"
-            CREATE_RESPONSE=$(doctl apps create --spec "$MERGED_SPEC" --output json 2>&1)
-            
-            if ! echo "$CREATE_RESPONSE" | jq -e '.app.id // .id' >/dev/null 2>&1; then
-              echo "Error creating app:" >&2
-              echo "$CREATE_RESPONSE" >&2
-              exit 1
-            fi
-            
-            APP_ID=$(echo "$CREATE_RESPONSE" | jq -r '.app.id // .id')
-            echo "✓ Created app: $APP_ID"
-          else
-            # Update existing app
-            echo "Updating existing app: $APP_ID"
-            if ! doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json >/dev/null 2>&1; then
-              echo "Error updating app" >&2
-              exit 1
-            fi
-            echo "✓ Updated app: $APP_ID"
+          # Update existing app
+          echo "Updating existing app: $APP_ID"
+          if ! doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json >/dev/null 2>&1; then
+            echo "Error updating app" >&2
+            exit 1
+
+          echo "✓ Updated app: $APP_ID"
           fi
           
           echo "app_id=$APP_ID" >> $GITHUB_OUTPUT

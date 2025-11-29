@@ -7,3 +7,5 @@ nginx-gateway.conf
 openapitools.json
 bin/
 .DS_Store
+app.merged.yaml
+app.rendered.yaml

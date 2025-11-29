@@ -217,12 +217,72 @@ done
 
 # Final result is in MERGED_JSON
 
+# Remove encrypted secret values from existing services (DigitalOcean rejects encrypted values in specs)
+# Encrypted values start with "EV[" - DigitalOcean will preserve existing encrypted secrets automatically
+echo ">> Removing encrypted secret values from existing services..." >&2
+jq '
+  .services[] |= (
+    # Remove encrypted env secret values
+    .envs |= map(
+      if .type == "SECRET" and (.value | startswith("EV[")) then
+        del(.value)  # Remove encrypted value - DO will preserve existing secret
+      else
+        .
+      end
+    ) |
+    # Remove encrypted registry_credentials (if image exists and credentials are encrypted)
+    if .image and .image.registry_credentials and (.image.registry_credentials | startswith("EV[")) then
+      .image.registry_credentials = null  # Remove encrypted credentials - DO will preserve existing
+    else
+      .
+    end
+  )
+' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+
+# Add registry_credentials to all GHCR services that don't have it (or have null/empty)
+# DigitalOcean doesn't return registry_credentials in existing specs, so we need to add it
+if [ -n "${GITHUB_REGISTRY_CREDENTIALS:-}" ]; then
+  echo ">> Adding registry_credentials to GHCR services from GITHUB_REGISTRY_CREDENTIALS..." >&2
+  jq --arg creds "$GITHUB_REGISTRY_CREDENTIALS" '
+    .services[] |= (
+      if .image and .image.registry_type == "GHCR" then
+        # Add registry_credentials if missing, null, or empty
+        if (.image.registry_credentials == null) or (.image.registry_credentials == "") or (.image.registry_credentials | type == "null") then
+          .image.registry_credentials = $creds
+        else
+          .  # Keep existing non-encrypted credentials
+        end
+      else
+        .
+      end
+    )
+  ' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+  mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+  echo ">> Registry credentials added to GHCR services" >&2
+else
+  echo ">> Warning: GITHUB_REGISTRY_CREDENTIALS not set, skipping registry_credentials addition" >&2
+fi
+
+echo ">> Encrypted secrets and registry credentials removed (existing values will be preserved by DigitalOcean)" >&2
+
 # Final check: ALWAYS remove ingress.rules if ANY component routes exist (they are mutually exclusive)
 # This is critical - DigitalOcean rejects specs with both ingress.rules and component routes
-HAS_INGRESS_FINAL=$(jq -e '.ingress != null' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
-HAS_COMPONENT_ROUTES_FINAL=$(jq -e '[.services[]?.routes[]?] | length > 0' "$MERGED_JSON" 2>/dev/null && echo "true" || echo "false")
+if jq -e '.ingress != null' "$MERGED_JSON" >/dev/null 2>&1; then
+  HAS_INGRESS_FINAL="true"
+else
+  HAS_INGRESS_FINAL="false"
+fi
 
-echo ">> Final check: ingress=$HAS_INGRESS_FINAL, component_routes=$HAS_COMPONENT_ROUTES_FINAL" >&2
+if jq -e '[.services[]?.routes[]?] | length > 0' "$MERGED_JSON" >/dev/null 2>&1; then
+  HAS_COMPONENT_ROUTES_FINAL="true"
+else
+  HAS_COMPONENT_ROUTES_FINAL="false"
+fi
+
+# Debug: show what we found
+COMPONENT_ROUTES_COUNT=$(jq '[.services[]?.routes[]?] | length' "$MERGED_JSON" 2>/dev/null || echo "0")
+echo ">> Final check: ingress=$HAS_INGRESS_FINAL, component_routes=$HAS_COMPONENT_ROUTES_FINAL (count=$COMPONENT_ROUTES_COUNT)" >&2
 
 if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
   if [ "$HAS_INGRESS_FINAL" = "true" ]; then
@@ -260,9 +320,9 @@ if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
   jq 'del(.ingress)' "$MERGED_JSON" > "$MERGED_JSON.tmp"
   mv "$MERGED_JSON.tmp" "$MERGED_JSON"
   
-  # Verify removal
-  INGRESS_CHECK=$(jq -e '.ingress // empty' "$MERGED_JSON" 2>/dev/null)
-  if [ -n "$INGRESS_CHECK" ] && [ "$INGRESS_CHECK" != "null" ] && [ "$INGRESS_CHECK" != "{}" ] && [ "$INGRESS_CHECK" != "empty" ]; then
+  # Verify removal (don't use -e flag as it exits with error on null/empty)
+  INGRESS_CHECK=$(jq '.ingress // empty' "$MERGED_JSON" 2>/dev/null || echo "empty")
+  if [ -n "$INGRESS_CHECK" ] && [ "$INGRESS_CHECK" != "null" ] && [ "$INGRESS_CHECK" != "{}" ] && [ "$INGRESS_CHECK" != "empty" ] && [ "$INGRESS_CHECK" != '""' ]; then
     echo ">> ERROR: Ingress still exists after removal: $INGRESS_CHECK" >&2
     echo ">> Attempting alternative removal method..." >&2
     jq 'with_entries(select(.key != "ingress"))' "$MERGED_JSON" > "$MERGED_JSON.tmp"
@@ -277,17 +337,27 @@ yq eval -P "$MERGED_JSON" > "$OUTPUT_FILE"
 # Final YAML-level check and removal (belt and suspenders approach)
 if [ "$HAS_COMPONENT_ROUTES_FINAL" = "true" ]; then
   if grep -q "^ingress:" "$OUTPUT_FILE"; then
-    echo ">> WARNING: Ingress found in final YAML, removing with sed..." >&2
+    echo ">> WARNING: Ingress found in final YAML, removing with awk..." >&2
     # Remove ingress block (handles multi-line YAML)
-    awk '/^ingress:/{flag=1} /^[a-zA-Z]/{if(flag) flag=0} !flag' "$OUTPUT_FILE" > "$OUTPUT_FILE.tmp"
+    # Match lines starting with 'ingress:' and everything until the next top-level key (not indented)
+    awk '/^ingress:/{flag=1; next} /^[a-zA-Z][^:]*:/{if(flag) flag=0} !flag' "$OUTPUT_FILE" > "$OUTPUT_FILE.tmp"
     mv "$OUTPUT_FILE.tmp" "$OUTPUT_FILE"
     echo ">> Ingress removed from YAML file" >&2
+    # Verify removal
+    if grep -q "^ingress:" "$OUTPUT_FILE"; then
+      echo ">> ERROR: Ingress still present after awk removal, trying alternative method..." >&2
+      # Alternative: use yq to remove ingress
+      yq eval 'del(.ingress)' -i "$OUTPUT_FILE" 2>/dev/null || {
+        echo ">> ERROR: yq removal also failed" >&2
+        exit 1
+      }
+      echo ">> Ingress removed using yq" >&2
+    fi
   fi
 fi
 
-# Remove registry_credentials field if present (not a valid field in DO App Platform spec)
-# GHCR authentication is handled through DigitalOcean's registry configuration, not in app spec
-sed -i '/registry_credentials:/d' "$OUTPUT_FILE"
+# Note: registry_credentials is a valid field in DO App Platform spec for private images
+# It should be kept in the spec to allow DO to authenticate with GHCR
 
 # Cleanup temporary files
 rm -f "$CURRENT_SPEC_FILE" "$CURRENT_JSON" "$NEW_JSON" "$MERGED_JSON" "$MERGED_JSON_TMP"
