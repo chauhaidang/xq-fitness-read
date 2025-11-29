@@ -139,9 +139,8 @@ jobs:
           APP_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           # Provision database (idempotent - safe to run multiple times)
-          chmod +x deploy/digitalocean/provision-db.sh
-          cd deploy/digitalocean
-          
+          chmod +x scripts/provision-db.sh
+          cd scripts/
           # Run provision-db.sh - it will create DB if needed or use existing
           # If user exists and password not provided, script will fail (expected)
           ./provision-db.sh 2>&1 | tee provision-output.log || {
