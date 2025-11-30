@@ -252,6 +252,45 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
     if [ "$NEW_SERVICE_NORMALIZED" == "$EXISTING_SERVICE_NORMALIZED" ]; then
       continue  # Skip unchanged services
     fi
+    
+    # If service exists, preserve encrypted password values from existing service
+    # DigitalOcean rejects updates with plain text passwords when encrypted ones exist
+    echo "    → Preserving encrypted password secrets from existing service..." >&2
+    SERVICE_JSON=$(echo "$SERVICE_JSON" | jq '
+      # For each env var in new service
+      .envs |= map(
+        if .type == "SECRET" then
+          # Check if existing service has this env var with encrypted value
+          . as $newEnv |
+          ($existingService.envs[]? | select(.key == $newEnv.key) | .value) as $existingValue |
+          # Remove value if:
+          # 1. Existing service has encrypted value (EV[...]) - DO will preserve it
+          # 2. New spec has encrypted value (EV[...]) - DO rejects encrypted values in updates
+          if (($existingValue | type == "string") and ($existingValue | startswith("EV["))) or 
+             (($newEnv.value | type == "string") and ($newEnv.value | startswith("EV["))) then
+            # Remove value - DigitalOcean will preserve existing encrypted secret
+            del(.value)
+          else
+            # No existing encrypted value, and new value is plain text - keep it (for new services or password updates)
+            .
+          end
+        else
+          .
+        end
+      )
+    ' --argjson existingService "$EXISTING_SERVICE_JSON")
+  else
+    # New service - remove encrypted values from new spec if present (DO rejects them for new services)
+    SERVICE_JSON=$(echo "$SERVICE_JSON" | jq '
+      .envs |= map(
+        if .type == "SECRET" and (.value | type == "string") and (.value | startswith("EV[")) then
+          # Remove encrypted value - new services must have plain text passwords
+          del(.value)
+        else
+          .
+        end
+      )
+    ')
   fi
   
   # Remove existing service with same name, then add new one
@@ -272,14 +311,14 @@ jq '
   .services[] |= (
     # Remove encrypted env secret values
     .envs |= map(
-      if .type == "SECRET" and (.value | startswith("EV[")) then
+      if .type == "SECRET" and (.value | type == "string") and (.value | startswith("EV[")) then
         del(.value)  # Remove encrypted value - DO will preserve existing secret
       else
         .
       end
     ) |
     # Remove encrypted registry_credentials (if image exists and credentials are encrypted)
-    if .image and .image.registry_credentials and (.image.registry_credentials | startswith("EV[")) then
+    if .image and .image.registry_credentials and (.image.registry_credentials | type == "string") and (.image.registry_credentials | startswith("EV[")) then
       .image.registry_credentials = null  # Remove encrypted credentials - DO will preserve existing
     else
       .
