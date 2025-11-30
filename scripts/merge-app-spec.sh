@@ -290,8 +290,7 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
         if .type == "SECRET" then
           if (.value | type == "string") and (.value | startswith("EV[")) then
             # Remove encrypted value - new services must have plain text passwords
-            # But this will cause the password to be missing! Better to error or warn
-            # Actually, if it's encrypted in the new spec, it's probably wrong - remove the env var
+            # If encrypted in new spec, remove env var (new services need plain text)
             empty
           elif (.value | type == "string") and (.value != "") then
             # Has plain text value - keep it
@@ -320,28 +319,50 @@ done
 
 # Final result is in MERGED_JSON
 
-# Remove encrypted secret values from existing services (DigitalOcean rejects encrypted values in specs)
-# Encrypted values start with "EV[" - DigitalOcean will preserve existing encrypted secrets automatically
-echo ">> Removing encrypted secret values from existing services..." >&2
+# Remove encrypted secret values from all services (DigitalOcean rejects encrypted values in specs)
+# We'll inject plain text passwords from environment variables for all services that need them
+echo ">> Removing encrypted secret values from all services..." >&2
 jq '
   .services[] |= (
     # Remove encrypted env secret values
-    .envs |= map(
-      if .type == "SECRET" and (.value | type == "string") and (.value | startswith("EV[")) then
-        del(.value)  # Remove encrypted value - DO will preserve existing secret
-      else
-        .
-      end
-    ) |
-    # Remove encrypted registry_credentials (if image exists and credentials are encrypted)
-    if .image and .image.registry_credentials and (.image.registry_credentials | type == "string") and (.image.registry_credentials | startswith("EV[")) then
-      .image.registry_credentials = null  # Remove encrypted credentials - DO will preserve existing
-    else
-      .
-    end
+    (if .envs then
+      .envs |= map(if .type == "SECRET" and (.value | type == "string") and (.value | startswith("EV[")) then del(.value) else . end)
+    else . end) |
+    # Remove encrypted registry_credentials
+    (if .image and .image.registry_credentials and (.image.registry_credentials | type == "string") and (.image.registry_credentials | startswith("EV[")) then .image.registry_credentials = null else . end)
   )
 ' "$MERGED_JSON" > "$MERGED_JSON.tmp"
 mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+
+# Inject DB_PASSWORD for write-service (and any other services that need it)
+# Since both read-service and write-service use the same database, use the same password
+if [ -n "${DB_PASSWORD:-}" ]; then
+  echo ">> Injecting DB_PASSWORD for services that need it..." >&2
+  jq --arg password "$DB_PASSWORD" '
+    .services[] |= (
+      if .envs then
+        .envs |= map(
+          # Inject DB_PASSWORD for write-service
+          if .key == "DB_PASSWORD" and .type == "SECRET" and ((.value | type == "null") or (.value == "")) then
+            .value = $password
+          # Inject SPRING_DATASOURCE_PASSWORD for read-service (Spring Boot)
+          elif .key == "SPRING_DATASOURCE_PASSWORD" and .type == "SECRET" and ((.value | type == "null") or (.value == "")) then
+            .value = $password
+          else
+            .
+          end
+        )
+      else
+        .
+      end
+    )
+  ' "$MERGED_JSON" > "$MERGED_JSON.tmp"
+  mv "$MERGED_JSON.tmp" "$MERGED_JSON"
+  echo ">> DB_PASSWORD injected for services that need it" >&2
+else
+  echo ">> Warning: DB_PASSWORD not set, skipping password injection" >&2
+  echo ">> Services with missing passwords may fail to connect to database" >&2
+fi
 
 # Add registry_credentials to all GHCR services that don't have it (or have null/empty)
 # DigitalOcean doesn't return registry_credentials in existing specs, so we need to add it
@@ -367,7 +388,7 @@ else
   echo ">> Warning: GITHUB_REGISTRY_CREDENTIALS not set, skipping registry_credentials addition" >&2
 fi
 
-echo ">> Encrypted secrets and registry credentials removed (existing values will be preserved by DigitalOcean)" >&2
+echo ">> Encrypted secrets removed and plain text passwords injected from environment variables" >&2
 
 # Final check: ALWAYS remove ingress.rules if ANY component routes exist (they are mutually exclusive)
 # This is critical - DigitalOcean rejects specs with both ingress.rules and component routes

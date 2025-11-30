@@ -303,6 +303,7 @@ jobs:
         env:
           APP_NAME: 'xq-fitness'
           GITHUB_REGISTRY_CREDENTIALS: ${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}
+          DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
         run: |
           set -euo pipefail
           
