@@ -34,10 +34,9 @@ import static org.testng.Assert.*;
 @Test(groups = {"component", "integration"})
 public class ReadServiceApiComponentTest {
 
-    private static final String TEMP_URL = "https://xq-fitness-udfuy.ondigitalocean.app/xq-fitness-read-service/api/v1";
     private static final String BASE_URL = System.getenv("API_BASE_URL") != null
         ? System.getenv("API_BASE_URL")
-        : TEMP_URL;
+        : "http://localhost:8080/xq-fitness-read-service/api/v1";
 
     private static final int DEFAULT_TIMEOUT = 5000;
 
@@ -124,7 +123,7 @@ public class ReadServiceApiComponentTest {
     @Test(priority = 1, description = "GET /muscle-groups - Should return all muscle groups")
     public void testGetAllMuscleGroups() {
         List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
-        System.out.println("Muscle groups: " + muscleGroups);
+
         assertNotNull(muscleGroups, "Muscle groups list should not be null");
         assertTrue(muscleGroups.size() >= 0, "Should return a valid list");
 
@@ -138,8 +137,8 @@ public class ReadServiceApiComponentTest {
 
     @Test(priority = 2, description = "GET /routines - Should return all workout routines")
     public void testGetAllRoutines() {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(true).collectList().block();
-        System.out.println("Routines: " + routines);
+        List<WorkoutRoutine> routines = routinesApi.getRoutines(null).collectList().block();
+
         assertNotNull(routines, "Routines list should not be null");
         assertTrue(routines.size() >= 0, "Should return a valid list");
 
