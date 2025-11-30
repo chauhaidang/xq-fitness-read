@@ -14,7 +14,7 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/xq-fitness-read-service
   GITHUB_OWNER: ${{ github.repository_owner }}
   SERVICE_NAME: read-service
-  APP_ID": 7960143e-c80f-496d-9992-f24430bb77ff
+  APP_ID: 7960143e-c80f-496d-9992-f24430bb77ff
   APP_NAME: xq-fitness
 
 jobs:

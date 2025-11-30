@@ -59,7 +59,11 @@ echo "   Output file: $OUTPUT_FILE" >&2
 echo "" >&2
 
 # Get existing app ID if it exists
-APP_ID=$(doctl apps list --output json 2>/dev/null | jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 || echo "")
+# Use a pattern that always sets the variable, even if the command fails
+APP_ID=""
+if APP_ID_TMP=$(doctl apps list --output json 2>/dev/null | jq -r '.[] | select(.spec.name=="'"$APP_NAME"'") | .id' | head -n1 2>/dev/null); then
+  APP_ID="$APP_ID_TMP"
+fi
 
 if [ -z "$APP_ID" ]; then
   echo ">> App '$APP_NAME' does not exist, using new spec as-is" >&2
