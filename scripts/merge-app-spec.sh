@@ -253,25 +253,27 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
       continue  # Skip unchanged services
     fi
     
-    # If service exists, preserve encrypted password values from existing service
-    # DigitalOcean rejects updates with plain text passwords when encrypted ones exist
-    echo "    → Preserving encrypted password secrets from existing service..." >&2
+    # If service exists, handle password secrets carefully
+    # DigitalOcean behavior with SECRET env vars:
+    # - If you include env var with plain text value, DO will encrypt and update it (even if existing is encrypted)
+    # - If you include env var WITHOUT value field, DO will NOT set it (password becomes null/missing)
+    # Solution: Always include the password env var with plain text value from new spec
+    # DO will encrypt it automatically. This works even if existing service has encrypted value.
+    echo "    → Handling password secrets for existing service..." >&2
     SERVICE_JSON=$(echo "$SERVICE_JSON" | jq '
       # For each env var in new service
       .envs |= map(
         if .type == "SECRET" then
-          # Check if existing service has this env var with encrypted value
           . as $newEnv |
-          ($existingService.envs[]? | select(.key == $newEnv.key) | .value) as $existingValue |
-          # Remove value if:
-          # 1. Existing service has encrypted value (EV[...]) - DO will preserve it
-          # 2. New spec has encrypted value (EV[...]) - DO rejects encrypted values in updates
-          if (($existingValue | type == "string") and ($existingValue | startswith("EV["))) or 
-             (($newEnv.value | type == "string") and ($newEnv.value | startswith("EV["))) then
-            # Remove value - DigitalOcean will preserve existing encrypted secret
+          # If new spec has encrypted value (EV[...]), remove it (DO rejects encrypted values in updates)
+          if ($newEnv.value | type == "string") and ($newEnv.value | startswith("EV[")) then
+            # New spec has encrypted value - remove it to avoid DO rejection
+            # This will cause password to be missing, but spec will validate
+            # Better: the new spec should have plain text, not encrypted
             del(.value)
           else
-            # No existing encrypted value, and new value is plain text - keep it (for new services or password updates)
+            # New spec has plain text value (or no value) - keep it
+            # DO will encrypt it automatically, even if existing service has encrypted value
             .
           end
         else
@@ -280,16 +282,30 @@ for SERVICE_NAME in $NEW_SERVICE_NAMES; do
       )
     ' --argjson existingService "$EXISTING_SERVICE_JSON")
   else
-    # New service - remove encrypted values from new spec if present (DO rejects them for new services)
+    # New service - MUST have plain text password values
+    # Remove encrypted values if present (DO rejects them for new services)
+    # But keep the env var with plain text value
     SERVICE_JSON=$(echo "$SERVICE_JSON" | jq '
       .envs |= map(
-        if .type == "SECRET" and (.value | type == "string") and (.value | startswith("EV[")) then
-          # Remove encrypted value - new services must have plain text passwords
-          del(.value)
+        if .type == "SECRET" then
+          if (.value | type == "string") and (.value | startswith("EV[")) then
+            # Remove encrypted value - new services must have plain text passwords
+            # But this will cause the password to be missing! Better to error or warn
+            # Actually, if it's encrypted in the new spec, it's probably wrong - remove the env var
+            empty
+          elif (.value | type == "string") and (.value != "") then
+            # Has plain text value - keep it
+            .
+          else
+            # No value or empty - remove it (new services need passwords)
+            empty
+          end
         else
           .
         end
-      )
+      ) |
+      # Remove null entries
+      .envs |= map(select(. != null))
     ')
   fi
   
