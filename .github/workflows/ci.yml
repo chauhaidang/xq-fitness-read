@@ -18,7 +18,9 @@ env:
   APP_NAME: xq-fitness
   GITHUB_ACTOR: ${{ github.actor }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  DO_TOKEN: ${{ secrets.DO_TOKEN }}
+  
 jobs:
   unit-tests:
     name: Run Tests
@@ -87,7 +89,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           registry-url: 'https://npm.pkg.github.com/'
           scope: '@chauhaidang'
       
@@ -128,8 +130,8 @@ jobs:
           xq-infra down
           echo "Test environment stopped"
 
-  build-and-push:
-    name: Build and Push Docker Image
+  dockerize-and-deploy:
+    name: Dockerize and deploy
     needs: [unit-tests, component-tests]
     runs-on: ubuntu-latest
     permissions:
