@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.2.0'
+    id 'org.springframework.boot' version '3.4.1'
     id 'io.spring.dependency-management' version '1.1.4'
     id 'xq-test' version '2.3.0'
     id 'xq-dev' version '2.2.1'
@@ -61,6 +61,18 @@ dependencies {
     }
 }
 
+// Force Spring Framework version to ensure headerSet() method is available
+// Spring Boot 3.4.1 uses Spring Framework 6.2.x which includes headerSet()
+// This ensures compatibility with the generated API client
+configurations.all {
+    resolutionStrategy {
+        force 'org.springframework:spring-core:6.2.2'
+        force 'org.springframework:spring-web:6.2.2'
+        force 'org.springframework:spring-webflux:6.2.2'
+        force 'org.springframework:spring-context:6.2.2'
+    }
+}
+
 // Configure test task to run both JUnit and TestNG tests
 test {
     useJUnitPlatform()
@@ -80,8 +92,6 @@ task componentTest(type: Test) {
 
     // Only run component tests
     include '**/component/**/*ApiComponentTest.class'
-
-    shouldRunAfter test
 }
 
 apiClientGeneration {
