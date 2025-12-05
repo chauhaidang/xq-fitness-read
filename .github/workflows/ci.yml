@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'src/**'
-      - 'ci.yml'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 env:
