@@ -43,10 +43,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-
-      - name: Generate api client
-        run: ./gradlew generateApiClient
-
       - name: Run unit tests
         run: ./gradlew test --no-daemon
 
@@ -130,6 +126,7 @@ jobs:
         if: always()
         run: |
           echo "Stopping services..."
+          xq-infra logs
           xq-infra down
           echo "Test environment stopped"
 
