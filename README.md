@@ -2,11 +2,10 @@
 
 Java Spring Boot service for reading workout data.
 
-[![Build and publish](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/build.yml/badge.svg)](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/build.yml)
-
-[![Test](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/test.yml/badge.svg)](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/test.yml)
+[![Build Test Publish Deploy](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/ci.yml/badge.svg)](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/ci.yml)
 
 [![Sync API Definition to xq-apis](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/api-sync.yml/badge.svg)](https://github.com/chauhaidang/xq-fitness-read/actions/workflows/api-sync.yml)
+
 ## Prerequisites
 
 - Java 17 or higher
