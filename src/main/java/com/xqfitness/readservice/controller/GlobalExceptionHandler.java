@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorDTO> handleIllegalArgumentException(IllegalArgumentException ex) {
+        ErrorDTO error = new ErrorDTO("NOT_FOUND", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorDTO> handleException(Exception ex) {
         ErrorDTO error = new ErrorDTO("INTERNAL_ERROR", ex.getMessage());

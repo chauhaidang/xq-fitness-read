@@ -56,7 +56,7 @@ dependencies {
 
     // Generated API client for component tests (WebClient-based)
     // Exclude JAX-RS provider to avoid JAXB dependency conflicts (not needed for WebClient)
-    testImplementation('com.xqfitness.client:read-service-client:1.0.2') {
+    testImplementation('com.xqfitness.client:read-service-client:1.1.0') {
         exclude group: 'com.fasterxml.jackson.jaxrs', module: 'jackson-jaxrs-json-provider'
     }
 }

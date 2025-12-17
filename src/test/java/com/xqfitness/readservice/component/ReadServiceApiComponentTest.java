@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -44,6 +45,7 @@ public class ReadServiceApiComponentTest {
     private MuscleGroupsApi muscleGroupsApi;
     private RoutinesApi routinesApi;
     private WorkoutDaysApi workoutDaysApi;
+    private ReportsApi reportsApi;
 
     private Long testRoutineId;
 
@@ -61,6 +63,7 @@ public class ReadServiceApiComponentTest {
         muscleGroupsApi = new MuscleGroupsApi(apiClient);
         routinesApi = new RoutinesApi(apiClient);
         workoutDaysApi = new WorkoutDaysApi(apiClient);
+        reportsApi = new ReportsApi(apiClient);
     }
     
     /**
@@ -299,5 +302,181 @@ public class ReadServiceApiComponentTest {
         long duration = System.currentTimeMillis() - startTime;
         assertTrue(duration < DEFAULT_TIMEOUT,
                   "Response time should be under " + DEFAULT_TIMEOUT + "ms, was: " + duration + "ms");
+    }
+
+    @Test(priority = 12, dependsOnMethods = "testGetAllRoutines",
+          description = "GET /routines/{routineId}/weekly-report - Should return weekly report with snapshot")
+    public void testGetWeeklyReport_WithSnapshot() {
+        if (testRoutineId == null) {
+            return;
+        }
+
+        try {
+            // Note: This test assumes a snapshot exists for the routine
+            // In a real scenario, you would create a snapshot first via write-service
+            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
+
+            assertNotNull(report, "Weekly report should not be null");
+            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
+            assertNotNull(report.getWeekStartDate(), "Week start date should not be null");
+            assertNotNull(report.getHasSnapshot(), "Has snapshot flag should not be null");
+            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+
+            // Verify weekStartDate format (YYYY-MM-DD)
+            String weekStartDateStr = report.getWeekStartDate().toString();
+            assertTrue(weekStartDateStr.matches("^\\d{4}-\\d{2}-\\d{2}$"),
+                      "Week start date should be in YYYY-MM-DD format");
+
+            // If snapshot exists, verify snapshotCreatedAt is present
+            if (report.getHasSnapshot()) {
+                assertNotNull(report.getSnapshotCreatedAt(), "Snapshot created at should not be null when snapshot exists");
+            }
+
+            // Verify muscle group totals structure
+            for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
+                assertNotNull(total.getMuscleGroup(), "Muscle group should not be null");
+                assertNotNull(total.getMuscleGroup().getId(), "Muscle group ID should not be null");
+                assertNotNull(total.getMuscleGroup().getName(), "Muscle group name should not be null");
+                assertNotNull(total.getTotalSets(), "Total sets should not be null");
+                assertTrue(total.getTotalSets() >= 0, "Total sets should be non-negative");
+            }
+        } catch (WebClientResponseException e) {
+            // If no snapshot exists, that's acceptable - we'll test that scenario separately
+            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
+                fail("Unexpected error: " + e.getStatusCode().value() + ", Response: " + e.getResponseBodyAsString());
+            }
+        }
+    }
+
+    @Test(priority = 13, dependsOnMethods = "testGetAllRoutines",
+          description = "GET /routines/{routineId}/weekly-report - Should return empty report when no snapshot exists")
+    public void testGetWeeklyReport_NoSnapshot() {
+        if (testRoutineId == null) {
+            return;
+        }
+
+        try {
+            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
+
+            assertNotNull(report, "Weekly report should not be null");
+            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
+            assertFalse(report.getHasSnapshot(), "Has snapshot should be false when no snapshot exists");
+            assertNull(report.getSnapshotCreatedAt(), "Snapshot created at should be null when no snapshot exists");
+            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+
+            // When no snapshot exists, all muscle groups should have zero sets
+            for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
+                assertEquals(total.getTotalSets().intValue(), 0,
+                           "Total sets should be zero when no snapshot exists");
+            }
+
+            // Should have at least some muscle groups
+            assertTrue(report.getMuscleGroupTotals().size() > 0,
+                      "Should return at least one muscle group");
+        } catch (WebClientResponseException e) {
+            fail("Should return empty report, not error. Status: " + e.getStatusCode().value() +
+                 ", Response: " + e.getResponseBodyAsString());
+        }
+    }
+
+    @Test(priority = 14, dependsOnMethods = "testGetAllRoutines",
+          description = "GET /routines/{routineId}/weekly-report - Should return report with all muscle groups")
+    public void testGetWeeklyReport_AllMuscleGroups() {
+        if (testRoutineId == null) {
+            return;
+        }
+
+        try {
+            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
+
+            assertNotNull(report, "Weekly report should not be null");
+            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+
+            // Get all muscle groups to compare
+            List<MuscleGroup> allMuscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
+
+            // Report should include all muscle groups
+            assertEquals(report.getMuscleGroupTotals().size(), allMuscleGroups.size(),
+                         "Report should include all muscle groups");
+
+            // Verify all muscle groups from the list are in the report
+            for (MuscleGroup mg : allMuscleGroups) {
+                boolean found = report.getMuscleGroupTotals().stream()
+                    .anyMatch(total -> total.getMuscleGroup().getId().equals(mg.getId()));
+                assertTrue(found, "Muscle group " + mg.getName() + " should be in the report");
+            }
+        } catch (WebClientResponseException e) {
+            fail("Should return report with all muscle groups. Status: " + e.getStatusCode().value() +
+                 ", Response: " + e.getResponseBodyAsString());
+        }
+    }
+
+    @Test(priority = 15, description = "GET /routines/{routineId}/weekly-report - Should return 404 for invalid routineId")
+    public void testGetWeeklyReport_NotFound() {
+        try {
+            reportsApi.getWeeklyReport(999999L, null).block();
+            fail("Should have thrown WebClientResponseException with 404 status");
+        } catch (WebClientResponseException e) {
+            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND,
+                         "Should return 404 for non-existent routine");
+        } catch (Exception e) {
+            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
+        }
+    }
+
+    @Test(priority = 16, dependsOnMethods = "testGetAllRoutines",
+          description = "GET /routines/{routineId}/weekly-report - Should calculate current week start date")
+    public void testGetWeeklyReport_WeekStartDateCalculation() {
+        if (testRoutineId == null) {
+            return;
+        }
+
+        try {
+            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
+
+            assertNotNull(report, "Weekly report should not be null");
+            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
+            assertNotNull(report.getWeekStartDate(), "Week start date should not be null");
+            
+            // Verify weekStartDate is a Monday (ISO 8601 week start)
+            java.time.LocalDate weekStart = report.getWeekStartDate();
+            java.time.DayOfWeek dayOfWeek = weekStart.getDayOfWeek();
+            assertEquals(dayOfWeek, java.time.DayOfWeek.MONDAY,
+                         "Week start date should be a Monday (ISO 8601)");
+            
+            // Verify weekStartDate format (YYYY-MM-DD)
+            String weekStartDateStr = weekStart.toString();
+            assertTrue(weekStartDateStr.matches("^\\d{4}-\\d{2}-\\d{2}$"),
+                      "Week start date should be in YYYY-MM-DD format");
+        } catch (WebClientResponseException e) {
+            // Acceptable if routine doesn't exist or has no snapshot
+            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
+                fail("Unexpected error: " + e.getStatusCode().value() + ", Response: " + e.getResponseBodyAsString());
+            }
+        }
+    }
+
+    @Test(priority = 17, dependsOnMethods = "testGetAllRoutines",
+          description = "GET /routines/{routineId}/weekly-report - Should return report within acceptable time")
+    public void testGetWeeklyReport_ResponseTime() {
+        if (testRoutineId == null) {
+            return;
+        }
+
+        long startTime = System.currentTimeMillis();
+
+        try {
+            reportsApi.getWeeklyReport(testRoutineId, null).block();
+            long duration = System.currentTimeMillis() - startTime;
+            
+            // Performance requirement: < 2 seconds (SC-002)
+            assertTrue(duration < 2000,
+                      "Report retrieval should complete in < 2 seconds, was: " + duration + "ms");
+        } catch (WebClientResponseException e) {
+            // Acceptable if routine doesn't exist
+            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
+                fail("Unexpected error: " + e.getStatusCode().value());
+            }
+        }
     }
 }

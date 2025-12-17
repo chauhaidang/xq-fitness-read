@@ -2,15 +2,32 @@
 set -euo pipefail
 
 # Query PostgreSQL database via Docker container
-# Usage: ./query-db.sh [SQL query]
-#   If no query provided, opens interactive psql session
+# Usage: ./query-db.sh [DB_CONTAINER] [SQL query]
+#   DB_CONTAINER: Name of the database container (optional, can also be set via DB_CONTAINER env var)
+#                 Defaults to: write-service-xq-fitness-db-1
+#   SQL query: SQL query to execute (optional, if not provided opens interactive psql session)
 #
 # Examples:
 #   ./query-db.sh "SELECT * FROM muscle_groups;"
 #   ./query-db.sh "SELECT COUNT(*) FROM workout_routines;"
 #   ./query-db.sh  # Opens interactive session
+#   DB_CONTAINER=my-db-container ./query-db.sh "SELECT * FROM muscle_groups;"
+#   ./query-db.sh my-db-container "SELECT * FROM muscle_groups;"
+#   ./query-db.sh my-db-container  # Opens interactive session with custom container
 
-DB_CONTAINER="read-service-xq-fitness-db-1"
+# Determine DB_CONTAINER: check env var first, then first arg if it's a container name, else use default
+if [ -n "${DB_CONTAINER:-}" ]; then
+  # DB_CONTAINER already set via environment variable
+  :
+elif [ $# -gt 0 ] && docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^${1}$"; then
+  # First argument is a running container name
+  DB_CONTAINER="$1"
+  shift  # Remove container name from arguments
+else
+  # Use default container name
+  DB_CONTAINER="${DB_CONTAINER:-write-service-xq-fitness-db-1}"
+fi
+
 # Use explicit defaults (not environment variables) for local Docker database
 DB_USER="${QUERY_DB_USER:-xq_user}"
 DB_NAME="${QUERY_DB_NAME:-xq_fitness}"

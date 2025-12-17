@@ -86,6 +86,7 @@ Base URL: `http://localhost:8080/api/v1`
 - `GET /routines` - Get all routines (optional query param: `isActive`)
 - `GET /routines/{id}` - Get routine by ID with full details
 - `GET /routines/{id}/days` - Get all workout days for a routine
+- `GET /routines/{routineId}/weekly-report` - Get weekly report showing total sets per muscle group for the current week (optional query param: `weekStartDate`)
 
 ## API Documentation
 

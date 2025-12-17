@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: XQ Fitness Read Service API
   description: Read-only service for querying workout routines and related data
-  version: 1.0.2
+  version: 1.1.0
   contact:
     name: XQ Fitness Team
 
@@ -123,6 +123,52 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/WorkoutDayDetail'
+        '404':
+          description: Routine not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /routines/{routineId}/weekly-report:
+    get:
+      summary: Get weekly report for a routine
+      description: |
+        Retrieves a weekly report showing the total number of sets per muscle group
+        for the current week. The report aggregates sets data from the weekly snapshot
+        if one exists. If no snapshot exists for the current week, returns an empty
+        report with all muscle groups showing zero sets.
+      operationId: getWeeklyReport
+      tags:
+        - Reports
+      parameters:
+        - name: routineId
+          in: path
+          description: ID of the routine to get report for
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: weekStartDate
+          in: query
+          description: Optional week start date (Monday) in ISO 8601 format (YYYY-MM-DD). If not provided, uses current week.
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Weekly report retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyReportResponse'
         '404':
           description: Routine not found
           content:
@@ -267,6 +313,53 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    WeeklyReportResponse:
+      type: object
+      required:
+        - routineId
+        - weekStartDate
+        - hasSnapshot
+        - muscleGroupTotals
+      properties:
+        routineId:
+          type: integer
+          format: int64
+          example: 1
+        weekStartDate:
+          type: string
+          format: date
+          description: Monday date of the current week (ISO 8601 format YYYY-MM-DD)
+          example: "2024-12-02"
+        hasSnapshot:
+          type: boolean
+          description: Whether a snapshot exists for this week
+          example: true
+        snapshotCreatedAt:
+          type: string
+          format: date-time
+          description: When the snapshot was created (null if no snapshot)
+          example: "2024-12-07T10:30:00Z"
+          nullable: true
+        muscleGroupTotals:
+          type: array
+          description: Total sets per muscle group aggregated across all workout days
+          items:
+            $ref: '#/components/schemas/MuscleGroupTotal'
+    
+    MuscleGroupTotal:
+      type: object
+      required:
+        - muscleGroup
+        - totalSets
+      properties:
+        muscleGroup:
+          $ref: '#/components/schemas/MuscleGroup'
+        totalSets:
+          type: integer
+          description: Total number of sets for this muscle group across all workout days in the routine
+          minimum: 0
+          example: 12
 
     Error:
       type: object
