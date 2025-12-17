@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: chauhaidang/xq-apis
-          token: ${{ secrets.XQ_FITNESS_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           path: xq-apis
 
       - name: Configure Git
@@ -72,7 +72,7 @@ jobs:
 
       - name: Create branch and copy API definition
         env:
-          GH_TOKEN: ${{ secrets.XQ_FITNESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           cd xq-apis
 
@@ -95,7 +95,7 @@ jobs:
 
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ secrets.XQ_FITNESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           cd xq-apis
 
