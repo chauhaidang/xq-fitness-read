@@ -106,4 +106,23 @@ class MuscleGroupRepositoryTest {
         // Then
         assertThat(muscleGroups).isEmpty();
     }
+
+    @Test
+    @DisplayName("findById - should return Abductor muscle group (ID: 13)")
+    void findById_shouldReturnAbductorMuscleGroup() {
+        // Given
+        MuscleGroup abductor = new MuscleGroup();
+        abductor.setName("Abductor");
+        abductor.setDescription("Hip abductor muscles (gluteus medius, gluteus minimus, tensor fasciae latae)");
+        MuscleGroup saved = entityManager.persist(abductor);
+        entityManager.flush();
+
+        // When
+        Optional<MuscleGroup> found = muscleGroupRepository.findById(saved.getId());
+
+        // Then
+        assertThat(found).isPresent();
+        assertThat(found.get().getName()).isEqualTo("Abductor");
+        assertThat(found.get().getDescription()).isEqualTo("Hip abductor muscles (gluteus medius, gluteus minimus, tensor fasciae latae)");
+    }
 }

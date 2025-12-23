@@ -142,6 +142,33 @@ class ReadServiceTest {
     }
 
     @Test
+    @DisplayName("getAllMuscleGroups - should return Abductor muscle group (ID: 13)")
+    void getAllMuscleGroups_shouldReturnAbductorMuscleGroup() {
+        // Given
+        MuscleGroup abductor = new MuscleGroup();
+        abductor.setId(13);
+        abductor.setName("Abductor");
+        abductor.setDescription("Hip abductor muscles (gluteus medius, gluteus minimus, tensor fasciae latae)");
+        abductor.setCreatedAt(LocalDateTime.now());
+
+        List<MuscleGroup> muscleGroups = Arrays.asList(muscleGroup1, muscleGroup2, abductor);
+        when(muscleGroupRepository.findAll()).thenReturn(muscleGroups);
+
+        // When
+        List<MuscleGroupDTO> result = readService.getAllMuscleGroups();
+
+        // Then
+        assertThat(result).hasSize(3);
+        assertThat(result).extracting(MuscleGroupDTO::getId)
+                .contains(13);
+        assertThat(result).extracting(MuscleGroupDTO::getName)
+                .contains("Abductor");
+        assertThat(result).extracting(MuscleGroupDTO::getDescription)
+                .contains("Hip abductor muscles (gluteus medius, gluteus minimus, tensor fasciae latae)");
+        verify(muscleGroupRepository, times(1)).findAll();
+    }
+
+    @Test
     @DisplayName("getAllRoutines - should return all routines when isActive is null")
     void getAllRoutines_shouldReturnAllRoutinesWhenIsActiveIsNull() {
         // Given
