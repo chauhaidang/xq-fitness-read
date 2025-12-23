@@ -121,6 +121,7 @@ public class ReportService {
             LEFT JOIN snapshot_workout_day_sets swds ON mg.id = swds.muscle_group_id
             LEFT JOIN snapshot_workout_days swd ON swds.snapshot_workout_day_id = swd.id
             LEFT JOIN weekly_snapshots ws ON swd.snapshot_id = ws.id AND ws.routine_id = :routineId AND ws.week_start_date = :weekStartDate
+            WHERE swds.id IS NULL OR ws.id IS NOT NULL
             GROUP BY mg.id, mg.name, mg.description, mg.created_at
             ORDER BY mg.name
             """;
