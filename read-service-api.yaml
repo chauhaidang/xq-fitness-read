@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: XQ Fitness Read Service API
   description: Read-only service for querying workout routines and related data
-  version: 1.1.0
+  version: 1.1.1
   contact:
     name: XQ Fitness Team
 
@@ -193,13 +193,13 @@ components:
         id:
           type: integer
           format: int64
-          example: 1
+          example: 13
         name:
           type: string
-          example: "Chest"
+          example: "Abductor"
         description:
           type: string
-          example: "Pectoralis major and minor muscles"
+          example: "Hip abductor muscles (gluteus medius, gluteus minimus, tensor fasciae latae)"
         createdAt:
           type: string
           format: date-time
