@@ -54,11 +54,9 @@ dependencies {
     // TestNG for component tests
     testImplementation 'org.testng:testng:7.8.0'
 
-    // Generated API client for component tests (WebClient-based)
-    // Exclude JAX-RS provider to avoid JAXB dependency conflicts (not needed for WebClient)
-    testImplementation('com.xqfitness.client:read-service-client:1.1.1') {
-        exclude group: 'com.fasterxml.jackson.jaxrs', module: 'jackson-jaxrs-json-provider'
-    }
+    // Generated API client for component tests: source from generateApiClient (see sourceSets.test below)
+    // Run: ./gradlew generateApiClient  then  ./gradlew compileTestJava
+    testImplementation 'org.openapitools:jackson-databind-nullable:0.2.6'
 }
 
 // Force Spring Framework version to ensure headerSet() method is available
@@ -96,4 +94,17 @@ task componentTest(type: Test) {
 
 apiClientGeneration {
     apiDefinitionFiles = ['read-service-api.yaml']
+}
+
+// Compile generated API client source as part of test (from read-service-api.yaml via generateApiClient)
+sourceSets {
+    test {
+        java {
+            srcDir('generated-clients/read-service/src/main/java')
+        }
+    }
+}
+// Generate client before compiling tests so component tests use client from api contract
+tasks.named('compileTestJava') {
+    dependsOn('generateApiClient')
 }

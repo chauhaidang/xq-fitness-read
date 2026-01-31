@@ -18,4 +18,5 @@ public class WeeklyReportDTO {
     private Boolean hasSnapshot;
     private LocalDateTime snapshotCreatedAt;
     private List<MuscleGroupTotalDTO> muscleGroupTotals;
+    private List<ExerciseTotalDTO> exerciseTotals;
 }

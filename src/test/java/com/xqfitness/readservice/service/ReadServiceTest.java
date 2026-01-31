@@ -7,6 +7,7 @@ import com.xqfitness.readservice.dto.WorkoutRoutineDetailDTO;
 import com.xqfitness.readservice.entity.MuscleGroup;
 import com.xqfitness.readservice.entity.WorkoutDay;
 import com.xqfitness.readservice.entity.WorkoutRoutine;
+import com.xqfitness.readservice.repository.ExerciseRepository;
 import com.xqfitness.readservice.repository.MuscleGroupRepository;
 import com.xqfitness.readservice.repository.WorkoutDayRepository;
 import com.xqfitness.readservice.repository.WorkoutRoutineRepository;
@@ -40,6 +41,9 @@ class ReadServiceTest {
 
     @Mock
     private WorkoutDayRepository workoutDayRepository;
+
+    @Mock
+    private ExerciseRepository exerciseRepository;
 
     @InjectMocks
     private ReadService readService;
@@ -245,6 +249,8 @@ class ReadServiceTest {
         activeRoutine.getWorkoutDays().add(workoutDay1);
         activeRoutine.getWorkoutDays().add(workoutDay2);
         when(workoutRoutineRepository.findByIdWithDetails(1)).thenReturn(Optional.of(activeRoutine));
+        when(exerciseRepository.findByWorkoutDayIdOrderById(1)).thenReturn(new ArrayList<>());
+        when(exerciseRepository.findByWorkoutDayIdOrderById(2)).thenReturn(new ArrayList<>());
 
         // When
         Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1);
@@ -278,6 +284,7 @@ class ReadServiceTest {
     void getRoutineById_shouldReturnRoutineWithEmptyWorkoutDaysList() {
         // Given
         when(workoutRoutineRepository.findByIdWithDetails(1)).thenReturn(Optional.of(activeRoutine));
+        // No workout days, so exerciseRepository not called
 
         // When
         Optional<WorkoutRoutineDetailDTO> result = readService.getRoutineById(1);
@@ -294,6 +301,8 @@ class ReadServiceTest {
         // Given
         List<WorkoutDay> workoutDays = Arrays.asList(workoutDay1, workoutDay2);
         when(workoutDayRepository.findByRoutineIdWithSets(1)).thenReturn(workoutDays);
+        when(exerciseRepository.findByWorkoutDayIdOrderById(1)).thenReturn(new ArrayList<>());
+        when(exerciseRepository.findByWorkoutDayIdOrderById(2)).thenReturn(new ArrayList<>());
 
         // When
         List<WorkoutDayDetailDTO> result = readService.getWorkoutDaysByRoutineId(1);

@@ -1,10 +1,13 @@
 package com.xqfitness.readservice.service;
 
+import com.xqfitness.readservice.dto.ExerciseTotalDTO;
 import com.xqfitness.readservice.dto.MuscleGroupDTO;
 import com.xqfitness.readservice.dto.MuscleGroupTotalDTO;
 import com.xqfitness.readservice.dto.WeeklyReportDTO;
+import com.xqfitness.readservice.entity.SnapshotExercise;
 import com.xqfitness.readservice.entity.WeeklySnapshot;
 import com.xqfitness.readservice.repository.MuscleGroupRepository;
+import com.xqfitness.readservice.repository.SnapshotExerciseRepository;
 import com.xqfitness.readservice.repository.WeeklySnapshotRepository;
 import com.xqfitness.readservice.repository.WorkoutRoutineRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -31,6 +36,7 @@ public class ReportService {
     private final WeeklySnapshotRepository weeklySnapshotRepository;
     private final MuscleGroupRepository muscleGroupRepository;
     private final WorkoutRoutineRepository workoutRoutineRepository;
+    private final SnapshotExerciseRepository snapshotExerciseRepository;
     private final EntityManager entityManager;
 
     /**
@@ -59,20 +65,30 @@ public class ReportService {
             WeeklySnapshot snapshot = snapshotOpt.get();
             log.info("Snapshot found for routineId: {}, weekStartDate: {}", routineId, weekStart);
 
-            // Aggregate sets by muscle_group_id using SQL GROUP BY and SUM
-            List<MuscleGroupTotalDTO> muscleGroupTotals = aggregateSetsByMuscleGroup(routineId, weekStart);
+            // Get snapshot workout day IDs for this snapshot
+            List<Integer> snapshotWorkoutDayIds = getSnapshotWorkoutDayIds(snapshot.getId());
+            List<SnapshotExercise> snapshotExercises = snapshotExerciseRepository.findBySnapshotWorkoutDayIdInOrderById(snapshotWorkoutDayIds);
+
+            // Exercise-level totals from snapshot_exercises
+            List<ExerciseTotalDTO> exerciseTotals = buildExerciseTotals(snapshotExercises);
+
+            // Muscle group totals: from snapshot_exercises if present, else from snapshot_workout_day_sets (backward compat)
+            List<MuscleGroupTotalDTO> muscleGroupTotals = snapshotExercises.isEmpty()
+                    ? aggregateSetsByMuscleGroup(routineId, weekStart)
+                    : aggregateMuscleGroupTotalsFromExercises(snapshotExercises);
 
             return new WeeklyReportDTO(
                     routineId,
                     weekStart,
                     true,
                     snapshot.getCreatedAt(),
-                    muscleGroupTotals
+                    muscleGroupTotals,
+                    exerciseTotals
             );
         } else {
             log.info("No snapshot found for routineId: {}, weekStartDate: {}. Returning empty report.", routineId, weekStart);
 
-            // Return all muscle groups with zero sets
+            // Return all muscle groups with zero sets, empty exercise totals
             List<MuscleGroupTotalDTO> muscleGroupTotals = getAllMuscleGroupsWithZeroSets();
 
             return new WeeklyReportDTO(
@@ -80,7 +96,8 @@ public class ReportService {
                     weekStart,
                     false,
                     null,
-                    muscleGroupTotals
+                    muscleGroupTotals,
+                    new ArrayList<>()
             );
         }
     }
@@ -164,6 +181,43 @@ public class ReportService {
                         0
                 ))
                 .sorted((a, b) -> a.getMuscleGroup().getName().compareTo(b.getMuscleGroup().getName()))
+                .collect(Collectors.toList());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Integer> getSnapshotWorkoutDayIds(Integer snapshotId) {
+        return entityManager.createQuery("SELECT swd.id FROM SnapshotWorkoutDay swd WHERE swd.snapshot.id = :snapshotId")
+                .setParameter("snapshotId", snapshotId)
+                .getResultList();
+    }
+
+    private List<ExerciseTotalDTO> buildExerciseTotals(List<SnapshotExercise> snapshotExercises) {
+        return snapshotExercises.stream()
+                .map(se -> new ExerciseTotalDTO(
+                        se.getExerciseName(),
+                        se.getMuscleGroup() != null ? MuscleGroupDTO.fromEntity(se.getMuscleGroup()) : null,
+                        se.getTotalReps(),
+                        se.getWeight() != null ? se.getWeight() : BigDecimal.ZERO
+                ))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Aggregate total_sets by muscle_group_id from snapshot_exercises.
+     * Returns all muscle groups with zero or summed total_sets from exercises.
+     */
+    private List<MuscleGroupTotalDTO> aggregateMuscleGroupTotalsFromExercises(List<SnapshotExercise> snapshotExercises) {
+        Map<Integer, Integer> setsByMuscleGroup = snapshotExercises.stream()
+                .collect(Collectors.groupingBy(
+                        se -> se.getMuscleGroup().getId(),
+                        Collectors.summingInt(SnapshotExercise::getTotalSets)
+                ));
+        return muscleGroupRepository.findAll().stream()
+                .sorted((a, b) -> a.getName().compareTo(b.getName()))
+                .map(mg -> new MuscleGroupTotalDTO(
+                        MuscleGroupDTO.fromEntity(mg),
+                        setsByMuscleGroup.getOrDefault(mg.getId(), 0)
+                ))
                 .collect(Collectors.toList());
     }
 }

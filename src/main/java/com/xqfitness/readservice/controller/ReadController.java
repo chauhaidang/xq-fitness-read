@@ -1,6 +1,10 @@
 package com.xqfitness.readservice.controller;
 
-import com.xqfitness.readservice.dto.*;
+import com.xqfitness.readservice.dto.ExerciseDTO;
+import com.xqfitness.readservice.dto.MuscleGroupDTO;
+import com.xqfitness.readservice.dto.WorkoutDayDetailDTO;
+import com.xqfitness.readservice.dto.WorkoutRoutineDTO;
+import com.xqfitness.readservice.dto.WorkoutRoutineDetailDTO;
 import com.xqfitness.readservice.service.ReadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -45,5 +49,13 @@ public class ReadController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(days);
+    }
+
+    @GetMapping("/exercises")
+    public ResponseEntity<List<ExerciseDTO>> getExercises(
+        @RequestParam Integer workoutDayId,
+        @RequestParam(required = false) Integer muscleGroupId
+    ) {
+        return ResponseEntity.ok(readService.getExercises(workoutDayId, muscleGroupId));
     }
 }

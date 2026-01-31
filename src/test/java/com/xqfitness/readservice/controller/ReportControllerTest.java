@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
@@ -74,7 +75,8 @@ class ReportControllerTest {
                 weekStart,
                 true,
                 now,
-                totalsWithSnapshot
+                totalsWithSnapshot,
+                Collections.emptyList()
         );
 
         // Report without snapshot (all zeros)
@@ -88,7 +90,8 @@ class ReportControllerTest {
                 weekStart,
                 false,
                 null,
-                totalsWithoutSnapshot
+                totalsWithoutSnapshot,
+                Collections.emptyList()
         );
     }
 
@@ -112,7 +115,8 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.muscleGroupTotals[0].muscleGroup.name").value("Chest"))
                 .andExpect(jsonPath("$.muscleGroupTotals[0].totalSets").value(12))
                 .andExpect(jsonPath("$.muscleGroupTotals[1].muscleGroup.name").value("Back"))
-                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(8));
+                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(8))
+                .andExpect(jsonPath("$.exerciseTotals").isArray());
 
         verify(reportService, times(1)).getWeeklyReport(eq(routineId), any());
     }
@@ -134,7 +138,8 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.snapshotCreatedAt").isEmpty())
                 .andExpect(jsonPath("$.muscleGroupTotals", hasSize(2)))
                 .andExpect(jsonPath("$.muscleGroupTotals[0].totalSets").value(0))
-                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(0));
+                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(0))
+                .andExpect(jsonPath("$.exerciseTotals").isArray());
 
         verify(reportService, times(1)).getWeeklyReport(eq(routineId), any());
     }
@@ -153,7 +158,8 @@ class ReportControllerTest {
                 LocalDate.of(2024, 12, 2),
                 true,
                 LocalDateTime.now(),
-                emptyTotals
+                emptyTotals,
+                Collections.emptyList()
         );
         when(reportService.getWeeklyReport(eq(routineId), any())).thenReturn(reportWithNoSets);
 
@@ -165,7 +171,8 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.hasSnapshot").value(true))
                 .andExpect(jsonPath("$.muscleGroupTotals", hasSize(2)))
                 .andExpect(jsonPath("$.muscleGroupTotals[0].totalSets").value(0))
-                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(0));
+                .andExpect(jsonPath("$.muscleGroupTotals[1].totalSets").value(0))
+                .andExpect(jsonPath("$.exerciseTotals").isArray());
 
         verify(reportService, times(1)).getWeeklyReport(eq(routineId), any());
     }

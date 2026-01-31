@@ -95,6 +95,7 @@ class ReadControllerTest {
                 "Focus on compound movements",
                 now,
                 now,
+                new ArrayList<>(),
                 new ArrayList<>()
         );
 
@@ -106,6 +107,7 @@ class ReadControllerTest {
                 "Pull exercises",
                 now,
                 now,
+                new ArrayList<>(),
                 new ArrayList<>()
         );
 

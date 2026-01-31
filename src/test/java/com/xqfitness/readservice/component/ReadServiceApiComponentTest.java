@@ -47,6 +47,7 @@ public class ReadServiceApiComponentTest {
     private RoutinesApi routinesApi;
     private WorkoutDaysApi workoutDaysApi;
     private ReportsApi reportsApi;
+    private ExercisesApi exercisesApi;
 
     private Long testRoutineId;
 
@@ -66,6 +67,7 @@ public class ReadServiceApiComponentTest {
         routinesApi = new RoutinesApi(apiClient);
         workoutDaysApi = new WorkoutDaysApi(apiClient);
         reportsApi = new ReportsApi(apiClient);
+        exercisesApi = new ExercisesApi(apiClient);
     }
 
     /**
@@ -320,6 +322,7 @@ public class ReadServiceApiComponentTest {
             assertNotNull(report.getWeekStartDate(), "Week start date should not be null");
             assertNotNull(report.getHasSnapshot(), "Has snapshot flag should not be null");
             assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+            assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null (API contract)");
 
             // Verify weekStartDate format (YYYY-MM-DD)
             String weekStartDateStr = report.getWeekStartDate().toString();
@@ -363,6 +366,8 @@ public class ReadServiceApiComponentTest {
             assertFalse(report.getHasSnapshot(), "Has snapshot should be false when no snapshot exists");
             assertNull(report.getSnapshotCreatedAt(), "Snapshot created at should be null when no snapshot exists");
             assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+            assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null (API contract)");
+            assertTrue(report.getExerciseTotals().isEmpty(), "Exercise totals should be empty when no snapshot exists");
 
             // When no snapshot exists, all muscle groups should have zero sets
             for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
@@ -390,6 +395,7 @@ public class ReadServiceApiComponentTest {
 
             assertNotNull(report, "Weekly report should not be null");
             assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+            assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null");
 
             // Get all muscle groups to compare
             List<MuscleGroup> allMuscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
@@ -474,6 +480,42 @@ public class ReadServiceApiComponentTest {
             if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
                 fail("Unexpected error: " + e.getStatusCode().value());
             }
+        }
+    }
+
+    // --- Phase 3b: Exercise queries & routine with exercises (US1) ---
+
+    @Test(priority = 18, dependsOnMethods = "testGetAllRoutines", description = "GET /exercises?workoutDayId= - Should return exercises for workout day")
+    public void testGetExercises_ByWorkoutDayId() {
+        if (testRoutineId == null) {
+            return;
+        }
+        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
+        if (routine == null || routine.getWorkoutDays() == null || routine.getWorkoutDays().isEmpty()) {
+            return;
+        }
+        Long workoutDayId = routine.getWorkoutDays().get(0).getId();
+        assertNotNull(workoutDayId, "Workout day ID should not be null");
+
+        List<Exercise> exercises = exercisesApi.getExercises(workoutDayId, null).collectList().block();
+
+        assertNotNull(exercises, "Exercises list should not be null");
+        assertTrue(exercises.size() >= 0, "Should return a valid list (array)");
+    }
+
+    @Test(priority = 19, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{id} - Should include exercises in workout day details")
+    public void testGetRoutineById_IncludesExercisesInWorkoutDays() {
+        if (testRoutineId == null) {
+            return;
+        }
+        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
+
+        assertNotNull(routine, "Routine response should not be null");
+        assertNotNull(routine.getWorkoutDays(), "Workout days list should not be null");
+        for (WorkoutDayDetail day : routine.getWorkoutDays()) {
+            assertNotNull(day.getExercises(),
+                    "Each workout day should contain exercises array. Day: " + day.getDayName());
+            assertTrue(day.getExercises() instanceof List, "exercises should be a list");
         }
     }
 
