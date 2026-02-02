@@ -1,0 +1,66 @@
+---
+description: "when implementing, fixing, or updating component tests, apply these rules"
+alwaysApply: false
+---
+
+# Component Test Rules
+
+When asked to implement, fix, or update component tests, follow this workflow and use the project's standard tooling.
+
+## Principles
+
+- **All tests must follow the API contract.** Request and response payloads, field names, types, status codes, and behaviour must match the canonical API specification (e.g. `read-service-api.yaml`). Do not hardcode values or shapes that diverge from the contract.
+- **Base fixes and updates on the API contract**; no shortcuts or workarounds.
+- **Clarify business behaviour** before updating or fixing component tests.
+
+## Workflow: Running Component Tests Locally
+
+### 1. Build the Service Container Image
+
+- Use the **existing** `build-<service_name>-service.sh` script **within the service directory**.
+- Examples:
+  - **read-service**: From `read-service/`, run `./build-read-service.sh`
+  - **write-service**: From `write-service/`, run `./build-write-service.sh`
+- Do not invent new build scripts; use the one that already exists in that service.
+
+### 2. Spin Up the Test Environment with xq-cli
+
+- Install/use **xq-cli** (e.g. `xq-infra` from `@chauhaidang/xq-test-infra`): `npm install -g @chauhaidang/xq-test-infra`
+- The test environment is defined in the **`test-env`** folder **within the service directory**.
+- From the **service directory**, run:
+  - `xq-infra generate -f ./test-env`
+  - `xq-infra up`
+- Do not use a different path; `test-env` is the standard folder name used by this project.
+
+### 3. Run the Tests
+
+- After the environment is up, run tests using the **service's normal test commands**:
+  - **Gradle services** (e.g. read-service): `./gradlew componentTest` (or the task name defined in that service's `build.gradle`).
+  - **npm-based services** (e.g. write-service): Use the npm script for component tests (e.g. `npm run test:component:ci` or `npm run test:component` as defined in `package.json`).
+- Refer to the service's CI workflow (`.github/workflows/ci.yml`) for the exact commands if unsure.
+
+### 4. Tear Down (Optional)
+
+- When done: `xq-infra down` (from the same directory where you ran `xq-infra up`).
+
+## Troubleshooting: Container Port Conflicts
+
+- **test-env** configuration is **often the same or very similar between services** in this project (e.g. same DB image, same port ranges).
+- If the test environment fails to start or services cannot bind:
+
+  1. **Check for port conflicts**:
+     - List running containers and their ports (e.g. `docker ps`, `docker compose ps`, or whatever xq-infra uses).
+     - Compare with the ports defined in `test-env/*.service.yml` and `test-env/xq.config.yml` (e.g. `portRange.start`, `ports`, service `port`).
+  2. **Stop conflicting stacks**:
+     - If another service's test env is still running (e.g. from `read-service` while you work on `write-service`), run `xq-infra down` in that other service directory, or stop the conflicting containers manually.
+  3. **Avoid running multiple test envs** that use the same host ports (e.g. 5432 for DB, or the same port range) at the same time.
+
+- When reporting or fixing "env won't start" or "address already in use", always consider **existing containers from other services** in this repo as a likely cause.
+
+## Summary Checklist
+
+- [ ] **All tests follow the API contract** (payloads, types, status codes, field names).
+- [ ] Run `build-<service_name>-service.sh` from the **service directory**.
+- [ ] Run `xq-infra generate -f ./test-env` and `xq-infra up` from the **service directory**.
+- [ ] Run component tests via **gradle** or **npm** as defined for that service.
+- [ ] If startup fails, **check container port conflicts** and other services' test envs.

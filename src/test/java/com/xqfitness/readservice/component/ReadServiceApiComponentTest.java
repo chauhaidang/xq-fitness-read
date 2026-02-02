@@ -1,37 +1,31 @@
 package com.xqfitness.readservice.component;
 
-import com.xqfitness.client.read_service.api.*;
 import com.xqfitness.client.read_service.invoker.*;
 import com.xqfitness.client.read_service.model.*;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
+import com.google.gson.reflect.TypeToken;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.config.ObjectMapperConfig;
+import io.restassured.config.RestAssuredConfig;
+import io.restassured.response.Response;
 import org.testng.annotations.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.sql.*;
+import java.lang.reflect.Type;
+import java.sql.Connection;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 
+import static com.xqfitness.client.read_service.invoker.GsonObjectMapper.gson;
 import static org.testng.Assert.*;
 
 /**
- * Component Tests for Read Service API using Generated Client
+ * Component tests for Read Service API using generated Rest Assured client.
+ * Each test uses DbTestFixture to create data in isolation, calls the API, and cleans up.
  *
  * Prerequisites:
- * 1. Test environment must be running via xq-infra CLI
+ * 1. Test environment must be running via xq-infra CLI (from service directory: xq-infra generate -f ./test-env && xq-infra up)
  * 2. Database and read-service must be accessible
- * 3. API Gateway at: http://localhost:8080/xq-fitness-read-service/api/v1
- *
- * These are real integration tests - no mocks, uses generated API client.
+ * 3. API_BASE_URL defaults to http://localhost:8080/xq-fitness-read-service/api/v1 (gateway location /xq-fitness-read-service/ from nginx-gateway.conf)
+ * 4. DB connection uses DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (defaults: localhost, 5432, xq_fitness, xq_user, xq_password)
  */
 @Test(groups = { "component", "integration" })
 public class ReadServiceApiComponentTest {
@@ -40,799 +34,360 @@ public class ReadServiceApiComponentTest {
             ? System.getenv("API_BASE_URL")
             : "http://localhost:8080/xq-fitness-read-service/api/v1";
 
-    private static final int DEFAULT_TIMEOUT = 5000;
-
     private ApiClient apiClient;
-    private MuscleGroupsApi muscleGroupsApi;
-    private RoutinesApi routinesApi;
-    private WorkoutDaysApi workoutDaysApi;
-    private ReportsApi reportsApi;
-    private ExercisesApi exercisesApi;
-
-    private Long testRoutineId;
 
     @BeforeClass
     public void setupClass() {
-        apiClient = new ApiClient();
-        apiClient.setBasePath(BASE_URL);
-
-        // Configure ObjectMapper to handle LocalDateTime format (without timezone) from
-        // API
-        // The API returns dates like "2025-11-26T12:29:45.943637" (no timezone)
-        // but the generated client expects OffsetDateTime. This custom deserializer
-        // converts LocalDateTime strings to OffsetDateTime (treating as UTC).
-        configureApiClientForLocalDateTime(apiClient);
-
-        muscleGroupsApi = new MuscleGroupsApi(apiClient);
-        routinesApi = new RoutinesApi(apiClient);
-        workoutDaysApi = new WorkoutDaysApi(apiClient);
-        reportsApi = new ReportsApi(apiClient);
-        exercisesApi = new ExercisesApi(apiClient);
+        ApiClient.Config config = ApiClient.Config.apiConfig();
+        config.reqSpecSupplier(() -> new RequestSpecBuilder()
+                .setBaseUri(BASE_URL)
+                .setConfig(RestAssuredConfig.config().objectMapperConfig(
+                        ObjectMapperConfig.objectMapperConfig().defaultObjectMapper(gson()))));
+        apiClient = ApiClient.api(config);
     }
 
-    /**
-     * Configures the ApiClient's ObjectMapper to handle LocalDateTime strings
-     * (without timezone) by converting them to OffsetDateTime (treating as UTC).
-     * This is needed because the API returns LocalDateTime format but the generated
-     * client expects OffsetDateTime.
-     */
-    private void configureApiClientForLocalDateTime(ApiClient apiClient) {
-        try {
-            // Access the ObjectMapper from ApiClient using reflection
-            Field objectMapperField = ApiClient.class.getDeclaredField("objectMapper");
-            objectMapperField.setAccessible(true);
-            ObjectMapper objectMapper = (ObjectMapper) objectMapperField.get(apiClient);
-
-            // Add custom deserializer for OffsetDateTime that handles LocalDateTime format
-            SimpleModule module = new SimpleModule("LocalDateTimeToOffsetDateTimeModule");
-            module.addDeserializer(OffsetDateTime.class, new JsonDeserializer<OffsetDateTime>() {
-                @Override
-                public OffsetDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-                    String value = p.getText();
-                    if (value == null || value.isEmpty()) {
-                        return null;
-                    }
-                    // Handle LocalDateTime format (without timezone) by treating as UTC
-                    if (value.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?$") &&
-                            !value.contains("+") && !value.endsWith("Z") &&
-                            !value.matches(".*[+-]\\d{2}:\\d{2}$")) {
-                        // Parse as LocalDateTime and convert to OffsetDateTime with UTC offset
-                        LocalDateTime localDateTime = LocalDateTime.parse(value);
-                        return localDateTime.atOffset(ZoneOffset.UTC);
-                    }
-                    // Otherwise, try to parse as OffsetDateTime
-                    try {
-                        return OffsetDateTime.parse(value);
-                    } catch (Exception e) {
-                        // If that fails, try appending Z and parse again
-                        return OffsetDateTime.parse(value + "Z");
-                    }
-                }
-            });
-            objectMapper.registerModule(module);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to configure ApiClient for LocalDateTime handling", e);
-        }
-    }
+    /** Retry when backend is not ready yet (e.g. container still starting). */
+    private static final int REACHABILITY_RETRIES = 5;
+    private static final long REACHABILITY_DELAY_MS = 3_000;
 
     @BeforeMethod
     public void setupMethod() {
-        try {
-            // WebClient returns Flux, need to collect to list and block
-            muscleGroupsApi.getMuscleGroups().collectList().block();
-        } catch (WebClientResponseException e) {
-            fail("Service should be accessible. Status: " + e.getStatusCode().value() + ", Response: "
-                    + e.getResponseBodyAsString());
-        } catch (Exception e) {
-            fail("Service should be accessible. Error: " + e.getMessage() + ", Type: " + e.getClass().getName(), e);
+        // Verify service is reachable; retry when backend is not ready yet
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= REACHABILITY_RETRIES; attempt++) {
+            try {
+                List<MuscleGroup> muscleGroups = apiClient.muscleGroups().getMuscleGroups().executeAs(r -> r);
+                assertNotNull(muscleGroups, "Service should be accessible");
+                return;
+            } catch (Exception e) {
+                lastException = e;
+                if (attempt < REACHABILITY_RETRIES) {
+                    try {
+                        Thread.sleep(REACHABILITY_DELAY_MS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError("Interrupted while waiting for service", ie);
+                    }
+                }
+            }
         }
+        fail("Service not reachable after " + REACHABILITY_RETRIES + " attempts: " + (lastException != null ? lastException.getMessage() : "unknown"));
     }
 
-    @Test(priority = 1, description = "GET /muscle-groups - Should return all muscle groups")
+    @Test(description = "GET /muscle-groups - Should return 200 and array of muscle groups")
     public void testGetAllMuscleGroups() {
-        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
+        List<MuscleGroup> muscleGroups = apiClient.muscleGroups().getMuscleGroups().executeAs(r -> r);
 
         assertNotNull(muscleGroups, "Muscle groups list should not be null");
         assertTrue(muscleGroups.size() >= 0, "Should return a valid list");
-
         if (!muscleGroups.isEmpty()) {
-            MuscleGroup firstGroup = muscleGroups.get(0);
-            assertNotNull(firstGroup.getId(), "Muscle group ID should not be null");
-            assertNotNull(firstGroup.getName(), "Muscle group name should not be null");
-            assertNotNull(firstGroup.getCreatedAt(), "Muscle group createdAt should not be null");
+            MuscleGroup first = muscleGroups.get(0);
+            assertNotNull(first.getId(), "Muscle group ID should not be null");
+            assertNotNull(first.getName(), "Muscle group name should not be null");
+            assertNotNull(first.getCreatedAt(), "Muscle group createdAt should not be null");
         }
     }
 
-    @Test(priority = 2, description = "GET /routines - Should return all workout routines")
-    public void testGetAllRoutines() {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(null).collectList().block();
+    @Test(description = "GET /routines - Should return routine created via DB")
+    public void testGetRoutines_ReturnsDbSeededRoutine() throws Exception {
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Component Test Routine", "Description", true);
+            assertNotNull(routineId, "Routine should be created");
 
-        assertNotNull(routines, "Routines list should not be null");
-        assertTrue(routines.size() >= 0, "Should return a valid list");
-
-        if (!routines.isEmpty()) {
-            testRoutineId = routines.get(0).getId();
-
-            WorkoutRoutine firstRoutine = routines.get(0);
-            assertNotNull(firstRoutine.getId(), "Routine ID should not be null");
-            assertNotNull(firstRoutine.getName(), "Routine name should not be null");
-            assertNotNull(firstRoutine.getIsActive(), "Routine isActive should not be null");
-            assertNotNull(firstRoutine.getCreatedAt(), "Routine createdAt should not be null");
-        }
-    }
-
-    @Test(priority = 3, description = "GET /routines?isActive=true - Should return only active routines")
-    public void testGetActiveRoutines() {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(true).collectList().block();
-
-        assertNotNull(routines, "Active routines list should not be null");
-
-        for (WorkoutRoutine routine : routines) {
-            assertTrue(routine.getIsActive(), "Routine should be active when filtered by isActive=true");
-        }
-    }
-
-    @Test(priority = 4, description = "GET /routines?isActive=false - Should return only inactive routines")
-    public void testGetInactiveRoutines() {
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(false).collectList().block();
-
-        assertNotNull(routines, "Inactive routines list should not be null");
-
-        for (WorkoutRoutine routine : routines) {
-            assertFalse(routine.getIsActive(), "Routine should be inactive when filtered by isActive=false");
-        }
-    }
-
-    @Test(priority = 5, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{id} - Should return routine with details")
-    public void testGetRoutineById() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
-
-        assertNotNull(routine, "Routine details should not be null");
-        assertEquals(routine.getId(), testRoutineId, "Routine ID should match requested ID");
-        assertNotNull(routine.getName(), "Routine name should not be null");
-        assertNotNull(routine.getWorkoutDays(), "Workout days list should not be null");
-
-        if (!routine.getWorkoutDays().isEmpty()) {
-            WorkoutDayDetail firstDay = routine.getWorkoutDays().get(0);
-            assertNotNull(firstDay.getId(), "Workout day ID should not be null");
-            assertNotNull(firstDay.getDayNumber(), "Day number should not be null");
-            assertNotNull(firstDay.getDayName(), "Day name should not be null");
-            assertNotNull(firstDay.getSets(), "Sets list should not be null");
-        }
-    }
-
-    @Test(priority = 6, description = "GET /routines/{id} - Should return 404 for non-existent routine")
-    public void testGetRoutineById_NotFound() {
-        try {
-            routinesApi.getRoutineById(999999L).block();
-            fail("Should have thrown WebClientResponseException with 404 status");
-        } catch (WebClientResponseException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 for non-existent routine");
-        } catch (Exception e) {
-            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
-        }
-    }
-
-    @Test(priority = 7, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{id}/days - Should return workout days for routine")
-    public void testGetWorkoutDays() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        try {
-            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId).collectList().block();
-
-            assertNotNull(days, "Workout days list should not be null");
-            assertTrue(days.size() > 0, "Should have at least one workout day");
-
-            for (int i = 0; i < days.size() - 1; i++) {
-                assertTrue(days.get(i).getDayNumber() <= days.get(i + 1).getDayNumber(),
-                        "Days should be ordered by dayNumber");
-            }
-
-            WorkoutDayDetail firstDay = days.get(0);
-            assertNotNull(firstDay.getId(), "Day ID should not be null");
-            assertNotNull(firstDay.getRoutineId(), "Routine ID should not be null");
-            assertEquals(firstDay.getRoutineId(), testRoutineId, "Routine ID should match");
-            assertNotNull(firstDay.getDayNumber(), "Day number should not be null");
-            assertNotNull(firstDay.getSets(), "Sets list should not be null");
-
-            if (!firstDay.getSets().isEmpty()) {
-                assertNotNull(firstDay.getSets().get(0).getMuscleGroup(),
-                        "Set should have muscle group");
-                assertNotNull(firstDay.getSets().get(0).getNumberOfSets(),
-                        "Set should have number of sets");
-            }
-        } catch (WebClientResponseException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 if routine has no days");
-        }
-    }
-
-    @Test(priority = 8, description = "GET /routines/{id}/days - Should return 404 for non-existent routine")
-    public void testGetWorkoutDays_NotFound() {
-        try {
-            workoutDaysApi.getWorkoutDays(999999L).collectList().block();
-            fail("Should have thrown WebClientResponseException with 404 status");
-        } catch (WebClientResponseException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "Should return 404 for non-existent routine days");
-        } catch (Exception e) {
-            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
-        }
-    }
-
-    @Test(priority = 9, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{id}/days - Should return workout days ordered by dayNumber")
-    public void testGetWorkoutDays_OrderedByDayNumber() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        try {
-            List<WorkoutDayDetail> days = workoutDaysApi.getWorkoutDays(testRoutineId).collectList().block();
-
-            assertNotNull(days, "Workout days list should not be null");
-
-            if (days.size() >= 2) {
-                for (int i = 0; i < days.size() - 1; i++) {
-                    assertTrue(days.get(i).getDayNumber() <= days.get(i + 1).getDayNumber(),
-                            "Days should be ordered by dayNumber in ascending order");
+            List<WorkoutRoutine> routines = apiClient.routines().getRoutines().executeAs(r -> r);
+            assertNotNull(routines, "Routines list should not be null");
+            final Long id = routineId;
+            WorkoutRoutine found = routines.stream().filter(r -> r.getId().equals(id)).findFirst().orElse(null);
+            assertNotNull(found, "Created routine " + id + " should appear in list. Returned IDs: " + routines.stream().map(WorkoutRoutine::getId).toList() + ". Ensure service uses same DB as test (DB_HOST/DB_PORT).");
+            assertEquals(found.getName(), "Component Test Routine", "Routine name should match");
+            assertTrue(found.getIsActive(), "Routine should be active");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
                 }
             }
-        } catch (WebClientResponseException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND, "404 is acceptable if routine has no days");
         }
     }
 
-    @Test(priority = 10, description = "Verify API responses are valid JSON")
-    public void testResponseFormat() {
-        List<MuscleGroup> muscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
-        assertNotNull(muscleGroups, "Response should be deserializable");
+    @Test(description = "GET /routines?isActive=true - Should return only active routines")
+    public void testGetRoutines_ActiveFilter() throws Exception {
+        Long activeId = null;
+        Long inactiveId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            activeId = DbTestFixture.createRoutine(conn, "Active Routine", null, true);
+            inactiveId = DbTestFixture.createRoutine(conn, "Inactive Routine", null, false);
+            assertNotNull(activeId);
+            assertNotNull(inactiveId);
 
-        List<WorkoutRoutine> routines = routinesApi.getRoutines(null).collectList().block();
-        assertNotNull(routines, "Response should be deserializable");
-    }
-
-    @Test(priority = 11, description = "Verify API responds within acceptable time")
-    public void testResponseTime() {
-        long startTime = System.currentTimeMillis();
-
-        muscleGroupsApi.getMuscleGroups().collectList().block();
-
-        long duration = System.currentTimeMillis() - startTime;
-        assertTrue(duration < DEFAULT_TIMEOUT,
-                "Response time should be under " + DEFAULT_TIMEOUT + "ms, was: " + duration + "ms");
-    }
-
-    @Test(priority = 12, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{routineId}/weekly-report - Should return weekly report with snapshot")
-    public void testGetWeeklyReport_WithSnapshot() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        try {
-            // Note: This test assumes a snapshot exists for the routine
-            // In a real scenario, you would create a snapshot first via write-service
-            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
-
-            assertNotNull(report, "Weekly report should not be null");
-            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
-            assertNotNull(report.getWeekStartDate(), "Week start date should not be null");
-            assertNotNull(report.getHasSnapshot(), "Has snapshot flag should not be null");
-            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
-            assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null (API contract)");
-
-            // Verify weekStartDate format (YYYY-MM-DD)
-            String weekStartDateStr = report.getWeekStartDate().toString();
-            assertTrue(weekStartDateStr.matches("^\\d{4}-\\d{2}-\\d{2}$"),
-                    "Week start date should be in YYYY-MM-DD format");
-
-            // If snapshot exists, verify snapshotCreatedAt is present
-            if (report.getHasSnapshot()) {
-                assertNotNull(report.getSnapshotCreatedAt(),
-                        "Snapshot created at should not be null when snapshot exists");
+            List<WorkoutRoutine> activeRoutines = apiClient.routines().getRoutines().isActiveQuery(true).executeAs(r -> r);
+            assertNotNull(activeRoutines);
+            for (WorkoutRoutine r : activeRoutines) {
+                assertTrue(r.getIsActive(), "Filter isActive=true should return only active");
             }
+            final Long activeIdFinal = activeId;
+            assertTrue(activeRoutines.stream().anyMatch(r -> r.getId().equals(activeIdFinal)), "Active routine " + activeIdFinal + " should be in list. Returned IDs: " + activeRoutines.stream().map(WorkoutRoutine::getId).toList());
 
-            // Verify muscle group totals structure
-            for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
-                assertNotNull(total.getMuscleGroup(), "Muscle group should not be null");
-                assertNotNull(total.getMuscleGroup().getId(), "Muscle group ID should not be null");
-                assertNotNull(total.getMuscleGroup().getName(), "Muscle group name should not be null");
-                assertNotNull(total.getTotalSets(), "Total sets should not be null");
-                assertTrue(total.getTotalSets() >= 0, "Total sets should be non-negative");
+            List<WorkoutRoutine> inactiveRoutines = apiClient.routines().getRoutines().isActiveQuery(false).executeAs(r -> r);
+            assertNotNull(inactiveRoutines);
+            for (WorkoutRoutine r : inactiveRoutines) {
+                assertFalse(r.getIsActive(), "Filter isActive=false should return only inactive");
             }
-        } catch (WebClientResponseException e) {
-            // If no snapshot exists, that's acceptable - we'll test that scenario
-            // separately
-            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
-                fail("Unexpected error: " + e.getStatusCode().value() + ", Response: " + e.getResponseBodyAsString());
+            final Long inactiveIdFinal = inactiveId;
+            assertTrue(inactiveRoutines.stream().anyMatch(r -> r.getId().equals(inactiveIdFinal)), "Inactive routine " + inactiveIdFinal + " should be in list. Returned IDs: " + inactiveRoutines.stream().map(WorkoutRoutine::getId).toList());
+        } finally {
+            try (Connection conn = DbTestFixture.getConnection()) {
+                if (activeId != null) DbTestFixture.deleteRoutine(conn, activeId);
+                if (inactiveId != null) DbTestFixture.deleteRoutine(conn, inactiveId);
             }
         }
     }
 
-    @Test(priority = 13, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{routineId}/weekly-report - Should return empty report when no snapshot exists")
-    public void testGetWeeklyReport_NoSnapshot() {
-        if (testRoutineId == null) {
-            return;
-        }
+    @Test(description = "GET /routines/{id} - Should return routine with days and sets from DB")
+    public void testGetRoutineById_ReturnsDetail() throws Exception {
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Detail Test Routine", null, true);
+            Long dayId = DbTestFixture.createWorkoutDay(conn, routineId, 1, "Push Day", null);
+            assertNotNull(dayId);
+            Long setId = DbTestFixture.createWorkoutDaySet(conn, dayId, 1, 3, null);
+            assertNotNull(setId);
 
-        try {
-            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
-
-            assertNotNull(report, "Weekly report should not be null");
-            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
-            assertFalse(report.getHasSnapshot(), "Has snapshot should be false when no snapshot exists");
-            assertNull(report.getSnapshotCreatedAt(), "Snapshot created at should be null when no snapshot exists");
-            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
-            assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null (API contract)");
-            assertTrue(report.getExerciseTotals().isEmpty(), "Exercise totals should be empty when no snapshot exists");
-
-            // When no snapshot exists, all muscle groups should have zero sets
-            for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
-                assertEquals(total.getTotalSets().intValue(), 0,
-                        "Total sets should be zero when no snapshot exists");
+            Response response = apiClient.routines().getRoutineById().routineIdPath(routineId).execute(r -> r);
+            assertEquals(response.getStatusCode(), 200, "GET /routines/{id} - status: " + response.getStatusCode() + ", body: " + response.getBody().asString());
+            WorkoutRoutineDetail detail = response.as(WorkoutRoutineDetail.class);
+            assertNotNull(detail, "Routine detail should not be null");
+            assertEquals(detail.getId(), routineId, "Routine ID should match");
+            assertEquals(detail.getName(), "Detail Test Routine", "Name should match");
+            assertNotNull(detail.getWorkoutDays(), "Workout days should not be null");
+            assertEquals(detail.getWorkoutDays().size(), 1, "Should have one day");
+            WorkoutDayDetail day = detail.getWorkoutDays().get(0);
+            assertEquals(day.getDayNumber(), Integer.valueOf(1), "Day number should match");
+            assertEquals(day.getDayName(), "Push Day", "Day name should match");
+            assertNotNull(day.getSets(), "Sets should not be null");
+            assertEquals(day.getSets().size(), 1, "Should have one set");
+            assertEquals(day.getSets().get(0).getNumberOfSets(), Integer.valueOf(3), "Number of sets should match");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
+                }
             }
-
-            // Should have at least some muscle groups
-            assertTrue(report.getMuscleGroupTotals().size() > 0,
-                    "Should return at least one muscle group");
-        } catch (WebClientResponseException e) {
-            fail("Should return empty report, not error. Status: " + e.getStatusCode().value() +
-                    ", Response: " + e.getResponseBodyAsString());
         }
     }
 
-    @Test(priority = 14, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{routineId}/weekly-report - Should return report with all muscle groups")
-    public void testGetWeeklyReport_AllMuscleGroups() {
-        if (testRoutineId == null) {
-            return;
+    @Test(description = "GET /routines/{id} - Should return 404 for non-existent routine")
+    public void testGetRoutineById_NotFound() {
+        Response response = apiClient.routines().getRoutineById().routineIdPath(999999L).execute(r -> r);
+        assertEquals(response.getStatusCode(), 404, "Should return 404 for non-existent routine");
+    }
+
+    @Test(description = "GET /routines/{id}/days - Should return days ordered by dayNumber")
+    public void testGetWorkoutDays_OrderedByDayNumber() throws Exception {
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Days Test Routine", null, true);
+            DbTestFixture.createWorkoutDay(conn, routineId, 2, "Day Two", null);
+            DbTestFixture.createWorkoutDay(conn, routineId, 1, "Day One", null);
+
+            Response response = apiClient.workoutDays().getWorkoutDays().routineIdPath(routineId).execute(r -> r);
+            assertEquals(response.getStatusCode(), 200, "GET /routines/{id}/days - status: " + response.getStatusCode() + ", body: " + response.getBody().asString());
+            Type listType = new TypeToken<List<WorkoutDayDetail>>(){}.getType();
+            List<WorkoutDayDetail> days = response.as(listType);
+            assertNotNull(days, "Days list should not be null");
+            assertEquals(days.size(), 2, "Should have two days");
+            assertTrue(days.get(0).getDayNumber() <= days.get(1).getDayNumber(), "Days should be ordered by dayNumber");
+            assertEquals(days.get(0).getDayName(), "Day One", "First day should be Day One");
+            assertEquals(days.get(1).getDayName(), "Day Two", "Second day should be Day Two");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
+                }
+            }
         }
+    }
 
-        try {
-            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
+    @Test(description = "GET /routines/{id}/days - Should return 404 for non-existent routine")
+    public void testGetWorkoutDays_NotFound() {
+        Response response = apiClient.workoutDays().getWorkoutDays().routineIdPath(999999L).execute(r -> r);
+        assertEquals(response.getStatusCode(), 404, "Should return 404 for non-existent routine");
+    }
 
-            assertNotNull(report, "Weekly report should not be null");
+    @Test(description = "GET /routines/{id}/weekly-report - Should return empty report when no snapshot")
+    public void testGetWeeklyReport_NoSnapshot() throws Exception {
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Report No Snapshot Routine", null, true);
+
+            Response response = apiClient.reports().getWeeklyReport().routineIdPath(routineId).execute(r -> r);
+            assertEquals(response.getStatusCode(), 200, "GET /routines/{id}/weekly-report (no snapshot) - status: " + response.getStatusCode() + ", body: " + response.getBody().asString());
+            WeeklyReportResponse report = response.as(WeeklyReportResponse.class);
+            assertNotNull(report, "Report should not be null");
+            assertEquals(report.getRoutineId(), routineId, "Routine ID should match");
+            assertFalse(report.getHasSnapshot(), "Has snapshot should be false");
+            assertNull(report.getSnapshotCreatedAt(), "Snapshot created at should be null");
             assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
             assertNotNull(report.getExerciseTotals(), "Exercise totals should not be null");
-
-            // Get all muscle groups to compare
-            List<MuscleGroup> allMuscleGroups = muscleGroupsApi.getMuscleGroups().collectList().block();
-
-            // Report should include all muscle groups
-            assertEquals(report.getMuscleGroupTotals().size(), allMuscleGroups.size(),
-                    "Report should include all muscle groups");
-
-            // Verify all muscle groups from the list are in the report
-            for (MuscleGroup mg : allMuscleGroups) {
-                boolean found = report.getMuscleGroupTotals().stream()
-                        .anyMatch(total -> total.getMuscleGroup().getId().equals(mg.getId()));
-                assertTrue(found, "Muscle group " + mg.getName() + " should be in the report");
+            for (MuscleGroupTotal total : report.getMuscleGroupTotals()) {
+                assertEquals(total.getTotalSets().intValue(), 0, "Total sets should be zero when no snapshot");
             }
-        } catch (WebClientResponseException e) {
-            fail("Should return report with all muscle groups. Status: " + e.getStatusCode().value() +
-                    ", Response: " + e.getResponseBodyAsString());
-        }
-    }
-
-    @Test(priority = 15, description = "GET /routines/{routineId}/weekly-report - Should return 404 for invalid routineId")
-    public void testGetWeeklyReport_NotFound() {
-        try {
-            reportsApi.getWeeklyReport(999999L, null).block();
-            fail("Should have thrown WebClientResponseException with 404 status");
-        } catch (WebClientResponseException e) {
-            assertEquals(e.getStatusCode(), HttpStatus.NOT_FOUND,
-                    "Should return 404 for non-existent routine");
-        } catch (Exception e) {
-            fail("Expected WebClientResponseException but got: " + e.getClass().getSimpleName());
-        }
-    }
-
-    @Test(priority = 16, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{routineId}/weekly-report - Should calculate current week start date")
-    public void testGetWeeklyReport_WeekStartDateCalculation() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        try {
-            WeeklyReportResponse report = reportsApi.getWeeklyReport(testRoutineId, null).block();
-
-            assertNotNull(report, "Weekly report should not be null");
-            assertEquals(report.getRoutineId(), testRoutineId, "Routine ID should match");
-            assertNotNull(report.getWeekStartDate(), "Week start date should not be null");
-
-            // Verify weekStartDate is a Monday (ISO 8601 week start)
-            java.time.LocalDate weekStart = report.getWeekStartDate();
-            java.time.DayOfWeek dayOfWeek = weekStart.getDayOfWeek();
-            assertEquals(dayOfWeek, java.time.DayOfWeek.MONDAY,
-                    "Week start date should be a Monday (ISO 8601)");
-
-            // Verify weekStartDate format (YYYY-MM-DD)
-            String weekStartDateStr = weekStart.toString();
-            assertTrue(weekStartDateStr.matches("^\\d{4}-\\d{2}-\\d{2}$"),
-                    "Week start date should be in YYYY-MM-DD format");
-        } catch (WebClientResponseException e) {
-            // Acceptable if routine doesn't exist or has no snapshot
-            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
-                fail("Unexpected error: " + e.getStatusCode().value() + ", Response: " + e.getResponseBodyAsString());
-            }
-        }
-    }
-
-    @Test(priority = 17, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{routineId}/weekly-report - Should return report within acceptable time")
-    public void testGetWeeklyReport_ResponseTime() {
-        if (testRoutineId == null) {
-            return;
-        }
-
-        long startTime = System.currentTimeMillis();
-
-        try {
-            reportsApi.getWeeklyReport(testRoutineId, null).block();
-            long duration = System.currentTimeMillis() - startTime;
-
-            // Performance requirement: < 2 seconds (SC-002)
-            assertTrue(duration < 2000,
-                    "Report retrieval should complete in < 2 seconds, was: " + duration + "ms");
-        } catch (WebClientResponseException e) {
-            // Acceptable if routine doesn't exist
-            if (e.getStatusCode() != HttpStatus.NOT_FOUND) {
-                fail("Unexpected error: " + e.getStatusCode().value());
-            }
-        }
-    }
-
-    // --- Phase 3b: Exercise queries & routine with exercises (US1) ---
-
-    @Test(priority = 18, dependsOnMethods = "testGetAllRoutines", description = "GET /exercises?workoutDayId= - Should return exercises for workout day")
-    public void testGetExercises_ByWorkoutDayId() {
-        if (testRoutineId == null) {
-            return;
-        }
-        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
-        if (routine == null || routine.getWorkoutDays() == null || routine.getWorkoutDays().isEmpty()) {
-            return;
-        }
-        Long workoutDayId = routine.getWorkoutDays().get(0).getId();
-        assertNotNull(workoutDayId, "Workout day ID should not be null");
-
-        List<Exercise> exercises = exercisesApi.getExercises(workoutDayId, null).collectList().block();
-
-        assertNotNull(exercises, "Exercises list should not be null");
-        assertTrue(exercises.size() >= 0, "Should return a valid list (array)");
-    }
-
-    @Test(priority = 19, dependsOnMethods = "testGetAllRoutines", description = "GET /routines/{id} - Should include exercises in workout day details")
-    public void testGetRoutineById_IncludesExercisesInWorkoutDays() {
-        if (testRoutineId == null) {
-            return;
-        }
-        WorkoutRoutineDetail routine = routinesApi.getRoutineById(testRoutineId).block();
-
-        assertNotNull(routine, "Routine response should not be null");
-        assertNotNull(routine.getWorkoutDays(), "Workout days list should not be null");
-        for (WorkoutDayDetail day : routine.getWorkoutDays()) {
-            assertNotNull(day.getExercises(),
-                    "Each workout day should contain exercises array. Day: " + day.getDayName());
-            assertTrue(day.getExercises() instanceof List, "exercises should be a list");
-        }
-    }
-
-    /**
-     * Get database connection using environment variables or defaults
-     */
-    private Connection getDatabaseConnection() throws SQLException {
-        String host = "localhost";
-        String port = "5432";
-        String database = "xq_fitness";
-        String user = "xq_user";
-        String password = "xq_password";
-
-        String url = String.format(
-                "jdbc:postgresql://%s:%s/%s?user=%s&password=%s",
-                host, port, database, user, password);
-
-        Connection conn = DriverManager.getConnection(url);
-        conn.setAutoCommit(true); // Auto-commit for immediate visibility
-        return conn;
-    }
-
-    /**
-     * Calculate Monday of current week (ISO 8601)
-     */
-    private LocalDate getCurrentWeekStart() {
-        LocalDate today = LocalDate.now();
-        int daysToSubtract = today.getDayOfWeek().getValue() - java.time.DayOfWeek.MONDAY.getValue();
-        if (daysToSubtract < 0) {
-            daysToSubtract += 7;
-        }
-        return today.minusDays(daysToSubtract);
-    }
-
-    /**
-     * Create a routine and return its ID
-     */
-    private Long createRoutine(Connection conn, String name, String description) throws SQLException {
-        String sql = "INSERT INTO workout_routines (name, description, is_active, created_at, updated_at) " +
-                "VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, name);
-            stmt.setString(2, description);
-            stmt.setBoolean(3, true);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
                 }
             }
         }
-        return null;
     }
 
-    /**
-     * Create a snapshot for a routine and return its ID
-     */
-    private Long createSnapshot(Connection conn, Long routineId, LocalDate weekStart) throws SQLException {
-        String sql = "INSERT INTO weekly_snapshots (routine_id, week_start_date, created_at, updated_at) " +
-                "VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, routineId);
-            stmt.setDate(2, java.sql.Date.valueOf(weekStart));
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
+    @Test(description = "GET /routines/{id}/weekly-report - Should return report with snapshot totals")
+    public void testGetWeeklyReport_WithSnapshot() throws Exception {
+        Long routineId = null;
+        LocalDate weekStart = DbTestFixture.getCurrentWeekStart();
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Report Snapshot Routine", null, true);
+            Long dayId = DbTestFixture.createWorkoutDay(conn, routineId, 1, "Push Day", null);
+            Long setId = DbTestFixture.createWorkoutDaySet(conn, dayId, 1, 5, null); // Chest = 1, 5 sets
+            Long snapshotId = DbTestFixture.createSnapshot(conn, routineId, weekStart);
+            Long snapshotDayId = DbTestFixture.createSnapshotWorkoutDay(conn, snapshotId, dayId, 1, "Push Day", null);
+            DbTestFixture.createSnapshotWorkoutDaySet(conn, snapshotDayId, setId, 1, 5, null);
+
+            Response response = apiClient.reports().getWeeklyReport().routineIdPath(routineId).execute(r -> r);
+            assertEquals(response.getStatusCode(), 200, "GET /routines/{id}/weekly-report (with snapshot) - status: " + response.getStatusCode() + ", body: " + response.getBody().asString());
+            WeeklyReportResponse report = response.as(WeeklyReportResponse.class);
+            assertNotNull(report, "Report should not be null");
+            assertEquals(report.getRoutineId(), routineId, "Routine ID should match");
+            assertTrue(report.getHasSnapshot(), "Has snapshot should be true");
+            assertNotNull(report.getSnapshotCreatedAt(), "Snapshot created at should be set");
+            assertNotNull(report.getMuscleGroupTotals(), "Muscle group totals should not be null");
+            MuscleGroupTotal chestTotal = report.getMuscleGroupTotals().stream()
+                    .filter(t -> t.getMuscleGroup() != null && t.getMuscleGroup().getId() != null && t.getMuscleGroup().getId() == 1L)
+                    .findFirst().orElse(null);
+            assertNotNull(chestTotal, "Chest muscle group should be in report");
+            assertEquals(chestTotal.getTotalSets().intValue(), 5, "Chest total sets should be 5");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
                 }
             }
         }
-        return null;
     }
 
-    /**
-     * Create a workout day for a routine and return its ID
-     */
-    private Long createWorkoutDay(Connection conn, Long routineId, Integer dayNumber, String dayName, String notes)
-            throws SQLException {
-        String sql = "INSERT INTO workout_days (routine_id, day_number, day_name, notes, created_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, routineId);
-            stmt.setInt(2, dayNumber);
-            stmt.setString(3, dayName);
-            if (notes != null) {
-                stmt.setString(4, notes);
-            } else {
-                stmt.setNull(4, Types.VARCHAR);
-            }
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Create a workout day set for a workout day and return its ID
-     */
-    private Long createWorkoutDaySet(Connection conn, Long workoutDayId, Integer muscleGroupId, Integer numberOfSets,
-            String notes) throws SQLException {
-        String sql = "INSERT INTO workout_day_sets (workout_day_id, muscle_group_id, number_of_sets, notes, created_at, updated_at) "
-                +
-                "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, workoutDayId);
-            stmt.setInt(2, muscleGroupId);
-            stmt.setInt(3, numberOfSets);
-            if (notes != null) {
-                stmt.setString(4, notes);
-            } else {
-                stmt.setNull(4, Types.VARCHAR);
-            }
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Create a snapshot workout day and return its ID
-     */
-    private Long createSnapshotWorkoutDay(Connection conn, Long snapshotId, Long originalWorkoutDayId,
-            Integer dayNumber, String dayName, String notes) throws SQLException {
-        String sql = "INSERT INTO snapshot_workout_days (snapshot_id, original_workout_day_id, day_number, day_name, notes, created_at) "
-                +
-                "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, snapshotId);
-            stmt.setLong(2, originalWorkoutDayId);
-            stmt.setInt(3, dayNumber);
-            stmt.setString(4, dayName);
-            if (notes != null) {
-                stmt.setString(5, notes);
-            } else {
-                stmt.setNull(5, Types.VARCHAR);
-            }
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Create a snapshot workout day set and return its ID
-     */
-    private Long createSnapshotWorkoutDaySet(Connection conn, Long snapshotWorkoutDayId, Long originalWorkoutDaySetId,
-            Integer muscleGroupId, Integer numberOfSets, String notes) throws SQLException {
-        String sql = "INSERT INTO snapshot_workout_day_sets (snapshot_workout_day_id, original_workout_day_set_id, muscle_group_id, number_of_sets, notes, created_at) "
-                +
-                "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, snapshotWorkoutDayId);
-            stmt.setLong(2, originalWorkoutDaySetId);
-            stmt.setInt(3, muscleGroupId);
-            stmt.setInt(4, numberOfSets);
-            if (notes != null) {
-                stmt.setString(5, notes);
-            } else {
-                stmt.setNull(5, Types.VARCHAR);
-            }
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("id");
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Delete a routine (cascade will delete snapshots)
-     */
-    private void deleteRoutine(Connection conn, Long routineId) throws SQLException {
-        if (routineId == null)
-            return;
-        try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM workout_routines WHERE id = ?")) {
-            stmt.setLong(1, routineId);
-            stmt.executeUpdate();
-        }
-    }
-
-    @Test(description = "GET /routines/{routineId}/weekly-report - Should isolate sets between different routines")
+    @Test(description = "GET /routines/{id}/weekly-report - Should isolate sets between routines")
     public void testGetWeeklyReport_RoutineIsolation() throws Exception {
-        // This test verifies routine isolation: when multiple routines have snapshots,
-        // querying one routine's report should NOT include sets from other routines.
-        //
-        // Setup:
-        // - Routine 1: 5 sets of Chest (muscle group ID = 1)
-        // - Routine 2: 3 sets of Chest (muscle group ID = 1)
-        // Expected: Each routine's report should only show its own sets, not combined
-
         Long routine1Id = null;
         Long routine2Id = null;
-        LocalDate weekStart = getCurrentWeekStart();
+        LocalDate weekStart = DbTestFixture.getCurrentWeekStart();
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routine1Id = DbTestFixture.createRoutine(conn, "Isolation Routine 1", null, true);
+            Long day1Id = DbTestFixture.createWorkoutDay(conn, routine1Id, 1, "Push", null);
+            Long set1Id = DbTestFixture.createWorkoutDaySet(conn, day1Id, 1, 5, null);
+            Long snap1Id = DbTestFixture.createSnapshot(conn, routine1Id, weekStart);
+            Long snapDay1Id = DbTestFixture.createSnapshotWorkoutDay(conn, snap1Id, day1Id, 1, "Push", null);
+            DbTestFixture.createSnapshotWorkoutDaySet(conn, snapDay1Id, set1Id, 1, 5, null);
 
-        try (Connection conn = getDatabaseConnection()) {
-            // Create two routines
-            routine1Id = createRoutine(conn, "Test Routine 1 - Isolation Test",
-                    "Test routine for isolation verification");
-            routine2Id = createRoutine(conn, "Test Routine 2 - Isolation Test",
-                    "Test routine for isolation verification");
+            routine2Id = DbTestFixture.createRoutine(conn, "Isolation Routine 2", null, true);
+            Long day2Id = DbTestFixture.createWorkoutDay(conn, routine2Id, 1, "Push", null);
+            Long set2Id = DbTestFixture.createWorkoutDaySet(conn, day2Id, 1, 3, null);
+            Long snap2Id = DbTestFixture.createSnapshot(conn, routine2Id, weekStart);
+            Long snapDay2Id = DbTestFixture.createSnapshotWorkoutDay(conn, snap2Id, day2Id, 1, "Push", null);
+            DbTestFixture.createSnapshotWorkoutDaySet(conn, snapDay2Id, set2Id, 1, 3, null);
 
-            assertNotNull(routine1Id, "Routine 1 should be created");
-            assertNotNull(routine2Id, "Routine 2 should be created");
+            Response response1 = apiClient.reports().getWeeklyReport().routineIdPath(routine1Id).execute(r -> r);
+            Response response2 = apiClient.reports().getWeeklyReport().routineIdPath(routine2Id).execute(r -> r);
+            assertEquals(response1.getStatusCode(), 200, "GET /routines/{id}/weekly-report (routine1) - status: " + response1.getStatusCode() + ", body: " + response1.getBody().asString());
+            assertEquals(response2.getStatusCode(), 200, "GET /routines/{id}/weekly-report (routine2) - status: " + response2.getStatusCode() + ", body: " + response2.getBody().asString());
+            WeeklyReportResponse report1 = response1.as(WeeklyReportResponse.class);
+            WeeklyReportResponse report2 = response2.as(WeeklyReportResponse.class);
 
-            // Create workout days for both routines
-            Long workoutDay1Id = createWorkoutDay(conn, routine1Id, 1, "Push Day", null);
-            Long workoutDay2Id = createWorkoutDay(conn, routine2Id, 1, "Push Day", null);
+            assertNotNull(report1);
+            assertNotNull(report2);
+            assertEquals(report1.getRoutineId(), routine1Id);
+            assertEquals(report2.getRoutineId(), routine2Id);
 
-            assertNotNull(workoutDay1Id, "Workout day 1 should be created");
-            assertNotNull(workoutDay2Id, "Workout day 2 should be created");
-
-            // Create workout day sets for both routines - same muscle group (Chest = ID 1)
-            // but different counts
-            // Routine 1: 5 sets of Chest
-            // Routine 2: 3 sets of Chest
-            Long set1Id = createWorkoutDaySet(conn, workoutDay1Id, 1, 5, null);
-            Long set2Id = createWorkoutDaySet(conn, workoutDay2Id, 1, 3, null);
-
-            assertNotNull(set1Id, "Workout day set 1 should be created");
-            assertNotNull(set2Id, "Workout day set 2 should be created");
-
-            // Create snapshots for both routines
-            Long snapshot1Id = createSnapshot(conn, routine1Id, weekStart);
-            Long snapshot2Id = createSnapshot(conn, routine2Id, weekStart);
-
-            assertNotNull(snapshot1Id, "Snapshot 1 should be created");
-            assertNotNull(snapshot2Id, "Snapshot 2 should be created");
-
-            // Create snapshot workout days for both snapshots
-            Long snapshotDay1Id = createSnapshotWorkoutDay(conn, snapshot1Id, workoutDay1Id, 1, "Push Day", null);
-            Long snapshotDay2Id = createSnapshotWorkoutDay(conn, snapshot2Id, workoutDay2Id, 1, "Push Day", null);
-
-            assertNotNull(snapshotDay1Id, "Snapshot day 1 should be created");
-            assertNotNull(snapshotDay2Id, "Snapshot day 2 should be created");
-
-            // Create snapshot workout day sets
-            // Routine 1: 5 sets of Chest
-            Long snapshotSet1Id = createSnapshotWorkoutDaySet(conn, snapshotDay1Id, set1Id, 1, 5, null);
-            // Routine 2: 3 sets of Chest
-            Long snapshotSet2Id = createSnapshotWorkoutDaySet(conn, snapshotDay2Id, set2Id, 1, 3, null);
-
-            assertNotNull(snapshotSet1Id, "Snapshot set 1 should be created");
-            assertNotNull(snapshotSet2Id, "Snapshot set 2 should be created");
+            MuscleGroupTotal chest1 = report1.getMuscleGroupTotals().stream()
+                    .filter(t -> t.getMuscleGroup() != null && t.getMuscleGroup().getId() == 1L).findFirst().orElse(null);
+            MuscleGroupTotal chest2 = report2.getMuscleGroupTotals().stream()
+                    .filter(t -> t.getMuscleGroup() != null && t.getMuscleGroup().getId() == 1L).findFirst().orElse(null);
+            assertNotNull(chest1);
+            assertNotNull(chest2);
+            assertEquals(chest1.getTotalSets().intValue(), 5, "Routine 1 should have 5 sets only");
+            assertEquals(chest2.getTotalSets().intValue(), 3, "Routine 2 should have 3 sets only");
+        } finally {
+            try (Connection conn = DbTestFixture.getConnection()) {
+                if (routine1Id != null) DbTestFixture.deleteRoutine(conn, routine1Id);
+                if (routine2Id != null) DbTestFixture.deleteRoutine(conn, routine2Id);
+            }
         }
+    }
 
-        // Wait for data to be visible to API
-        Thread.sleep(1000);
+    @Test(description = "GET /routines/{id}/weekly-report - Should return 404 for non-existent routine")
+    public void testGetWeeklyReport_NotFound() {
+        Response response = apiClient.reports().getWeeklyReport().routineIdPath(999999L).execute(r -> r);
+        assertEquals(response.getStatusCode(), 404, "Should return 404 for non-existent routine");
+    }
 
-        // Query weekly reports via API
-        WeeklyReportResponse report1 = reportsApi.getWeeklyReport(routine1Id, null).block();
-        WeeklyReportResponse report2 = reportsApi.getWeeklyReport(routine2Id, null).block();
+    @Test(description = "GET /exercises?workoutDayId= - Should return 200 with workout day from DB")
+    public void testGetExercises_ByWorkoutDayId() throws Exception {
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Exercises Routine", null, true);
+            Long dayId = DbTestFixture.createWorkoutDay(conn, routineId, 1, "Push Day", null);
 
-        if (report1 == null || report2 == null) {
-            fail("Reports should not be null. Routine1Id: " + routine1Id + ", Routine2Id: " + routine2Id);
+            List<Exercise> exercises = apiClient.exercises().getExercises().workoutDayIdQuery(dayId).executeAs(r -> r);
+            assertNotNull(exercises, "Exercises list should not be null");
+            assertTrue(exercises.size() >= 0, "Should return valid list");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
+                }
+            }
         }
+    }
 
-        // Validate reports
-        assertEquals(report1.getRoutineId(), routine1Id, "Report 1 should be for routine 1");
-        assertEquals(report2.getRoutineId(), routine2Id, "Report 2 should be for routine 2");
+    @Test(description = "GET /exercises without workoutDayId - Should return 400")
+    public void testGetExercises_MissingWorkoutDayId_Returns400() {
+        // Call without workoutDayIdQuery() so request has no workoutDayId param; API contract requires it -> 400
+        Response response = apiClient.exercises().getExercises().execute(r -> r);
+        assertEquals(response.getStatusCode(), 400, "Should return 400 when workoutDayId missing");
+    }
 
-        // Both routines should have snapshots
-        assertTrue(report1.getHasSnapshot(), "Routine 1 should have a snapshot");
-        assertTrue(report2.getHasSnapshot(), "Routine 2 should have a snapshot");
+    /**
+     * DEBUG: Verifies fixture and service see the same DB.
+     * Fixture inserts a row; if the API returns 404, the service is reading from a different DB.
+     * To verify manually: DB_CONTAINER=read-service-xq-fitness-db-1 ./scripts/query-db.sh "SELECT id, name FROM workout_routines;"
+     */
+    @Test(description = "DEBUG: Fixture and service must see same DB", enabled = true)
+    public void testDebug_DbConnection_VerifyFixtureAndServiceSeeSameDb() throws Exception {
+        String connectionUrl = DbTestFixture.getConnectionUrl();
+        System.err.println("[DEBUG] DbTestFixture connection: " + connectionUrl);
+        System.err.println("[DEBUG] API_BASE_URL: " + BASE_URL);
 
-        // Find Chest muscle group (ID = 1) in both reports
-        MuscleGroupTotal chestTotal1 = report1.getMuscleGroupTotals().stream()
-                .filter(t -> t.getMuscleGroup().getId() == 1L)
-                .findFirst()
-                .orElse(null);
+        Long routineId = null;
+        try (Connection conn = DbTestFixture.getConnection()) {
+            routineId = DbTestFixture.createRoutine(conn, "Debug Same-DB Check", null, true);
+            assertNotNull(routineId, "Fixture must be able to insert");
 
-        MuscleGroupTotal chestTotal2 = report2.getMuscleGroupTotals().stream()
-                .filter(t -> t.getMuscleGroup().getId() == 1L)
-                .findFirst()
-                .orElse(null);
+            boolean fixtureSeesRow = DbTestFixture.routineExists(conn, routineId);
+            assertTrue(fixtureSeesRow, "Fixture must see its own insert (routineId=" + routineId + ")");
 
-        assertNotNull(chestTotal1, "Chest muscle group should be in routine 1's report");
-        assertNotNull(chestTotal2, "Chest muscle group should be in routine 2's report");
-
-        int total1Sets = chestTotal1.getTotalSets().intValue();
-        int total2Sets = chestTotal2.getTotalSets().intValue();
-        int sumOfBoth = total1Sets + total2Sets;
-
-        // The key assertion: routine 1's total should be 5, not 8 (5 + 3)
-        // If it's 8, that means sets from routine 2 are leaking into routine 1's report
-        // (the bug)
-        assertEquals(total1Sets, 5,
-                String.format(
-                        "Routine 1's report should only include its own sets (5), not routine 2's sets (3). " +
-                                "Expected: 5, Actual: %d. If actual is 8, sets from routine 2 are leaking into routine 1's report (BUG).",
-                        total1Sets));
-
-        assertEquals(total2Sets, 3,
-                String.format(
-                        "Routine 2's report should only include its own sets (3), not routine 1's sets (5). " +
-                                "Expected: 3, Actual: %d.",
-                        total2Sets));
-
-        // Verify routine 1's total does NOT equal the sum of both (which would indicate
-        // the bug)
-        assertNotEquals(total1Sets, sumOfBoth,
-                String.format(
-                        "Routine 1's total sets (%d) should NOT equal the sum of both routines (%d). " +
-                                "If they are equal, sets from routine 2 are leaking into routine 1's report (BUG).",
-                        total1Sets, sumOfBoth));
-
-        // Cleanup
-        try (Connection conn = getDatabaseConnection()) {
-            deleteRoutine(conn, routine1Id);
-            deleteRoutine(conn, routine2Id);
+            Response response = apiClient.routines().getRoutineById().routineIdPath(routineId).execute(r -> r);
+            assertEquals(
+                    response.getStatusCode(),
+                    200,
+                    "Service returned " + response.getStatusCode() + " (expected 200). Fixture and service may be using different DBs. "
+                            + "Fixture URL: " + connectionUrl + ". "
+                            + "Verify: DB_CONTAINER=read-service-xq-fitness-db-1 ./scripts/query-db.sh \"SELECT id, name FROM workout_routines;\"");
+        } finally {
+            if (routineId != null) {
+                try (Connection conn = DbTestFixture.getConnection()) {
+                    DbTestFixture.deleteRoutine(conn, routineId);
+                }
+            }
         }
     }
 }

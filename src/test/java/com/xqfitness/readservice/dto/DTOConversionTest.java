@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -77,7 +78,7 @@ class DTOConversionTest {
         assertThat(dto.getId()).isEqualTo(1);
         assertThat(dto.getName()).isEqualTo("Chest");
         assertThat(dto.getDescription()).isEqualTo("Chest muscles");
-        assertThat(dto.getCreatedAt()).isEqualTo(now);
+        assertThat(dto.getCreatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
     }
 
     @Test
@@ -106,8 +107,8 @@ class DTOConversionTest {
         assertThat(dto.getName()).isEqualTo("5-Day Split");
         assertThat(dto.getDescription()).isEqualTo("5 day workout split");
         assertThat(dto.getIsActive()).isTrue();
-        assertThat(dto.getCreatedAt()).isEqualTo(now);
-        assertThat(dto.getUpdatedAt()).isEqualTo(now);
+        assertThat(dto.getCreatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
+        assertThat(dto.getUpdatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
     }
 
     @Test
@@ -186,8 +187,8 @@ class DTOConversionTest {
         assertThat(dto.getDayNumber()).isEqualTo(1);
         assertThat(dto.getDayName()).isEqualTo("Chest Day");
         assertThat(dto.getNotes()).isEqualTo("Focus on compound movements");
-        assertThat(dto.getCreatedAt()).isEqualTo(now);
-        assertThat(dto.getUpdatedAt()).isEqualTo(now);
+        assertThat(dto.getCreatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
+        assertThat(dto.getUpdatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
         assertThat(dto.getSets()).isEmpty();
     }
 
@@ -256,8 +257,8 @@ class DTOConversionTest {
         assertThat(dto.getWorkoutDayId()).isEqualTo(1);
         assertThat(dto.getNumberOfSets()).isEqualTo(4);
         assertThat(dto.getNotes()).isEqualTo("Bench press and variations");
-        assertThat(dto.getCreatedAt()).isEqualTo(now);
-        assertThat(dto.getUpdatedAt()).isEqualTo(now);
+        assertThat(dto.getCreatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
+        assertThat(dto.getUpdatedAt()).isEqualTo(now.atOffset(ZoneOffset.UTC));
     }
 
     @Test
@@ -289,11 +290,11 @@ class DTOConversionTest {
     @DisplayName("ErrorDTO - constructor should set timestamp automatically")
     void errorDTO_constructorShouldSetTimestampAutomatically() {
         // Given
-        LocalDateTime beforeCreation = LocalDateTime.now().minusSeconds(1);
+        java.time.OffsetDateTime beforeCreation = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1);
 
         // When
         ErrorDTO dto = new ErrorDTO("ERROR_CODE", "Error message");
-        LocalDateTime afterCreation = LocalDateTime.now().plusSeconds(1);
+        java.time.OffsetDateTime afterCreation = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(1);
 
         // Then
         assertThat(dto).isNotNull();

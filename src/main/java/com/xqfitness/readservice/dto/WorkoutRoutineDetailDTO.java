@@ -5,7 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -17,8 +18,8 @@ public class WorkoutRoutineDetailDTO {
     private String name;
     private String description;
     private Boolean isActive;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
     private List<WorkoutDayDetailDTO> workoutDays;
 
     public static WorkoutRoutineDetailDTO fromEntity(WorkoutRoutine entity) {
@@ -27,8 +28,8 @@ public class WorkoutRoutineDetailDTO {
             entity.getName(),
             entity.getDescription(),
             entity.getIsActive(),
-            entity.getCreatedAt(),
-            entity.getUpdatedAt(),
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atOffset(ZoneOffset.UTC) : null,
             entity.getWorkoutDays().stream()
                 .map(WorkoutDayDetailDTO::fromEntity)
                 .collect(Collectors.toList())

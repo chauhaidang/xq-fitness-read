@@ -68,11 +68,11 @@ class GlobalExceptionHandlerTest {
     void handleException_shouldSetTimestampInErrorDTO() {
         // Given
         Exception exception = new Exception("Test error");
-        LocalDateTime beforeCall = LocalDateTime.now().minusSeconds(1);
+        java.time.OffsetDateTime beforeCall = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1);
 
         // When
         ResponseEntity<ErrorDTO> response = exceptionHandler.handleException(exception);
-        LocalDateTime afterCall = LocalDateTime.now().plusSeconds(1);
+        java.time.OffsetDateTime afterCall = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(1);
 
         // Then
         assertThat(response.getBody()).isNotNull();

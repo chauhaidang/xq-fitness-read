@@ -15,7 +15,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -47,7 +48,7 @@ class ReportControllerTest {
 
     @BeforeEach
     void setUp() {
-        LocalDateTime now = LocalDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         LocalDate weekStart = LocalDate.of(2024, 12, 2); // Monday
 
         chestMuscleGroup = new MuscleGroupDTO(
@@ -157,7 +158,7 @@ class ReportControllerTest {
                 1,
                 LocalDate.of(2024, 12, 2),
                 true,
-                LocalDateTime.now(),
+                OffsetDateTime.now(ZoneOffset.UTC),
                 emptyTotals,
                 Collections.emptyList()
         );

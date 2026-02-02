@@ -5,7 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Data
 @NoArgsConstructor
@@ -15,8 +16,8 @@ public class WorkoutRoutineDTO {
     private String name;
     private String description;
     private Boolean isActive;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
 
     public static WorkoutRoutineDTO fromEntity(WorkoutRoutine entity) {
         return new WorkoutRoutineDTO(
@@ -24,8 +25,8 @@ public class WorkoutRoutineDTO {
             entity.getName(),
             entity.getDescription(),
             entity.getIsActive(),
-            entity.getCreatedAt(),
-            entity.getUpdatedAt()
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atOffset(ZoneOffset.UTC) : null
         );
     }
 }

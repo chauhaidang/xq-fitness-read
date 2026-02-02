@@ -5,7 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Data
 @NoArgsConstructor
@@ -16,8 +17,8 @@ public class WorkoutDaySetDTO {
     private MuscleGroupDTO muscleGroup;
     private Integer numberOfSets;
     private String notes;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
 
     public static WorkoutDaySetDTO fromEntity(WorkoutDaySet entity) {
         return new WorkoutDaySetDTO(
@@ -26,8 +27,8 @@ public class WorkoutDaySetDTO {
             MuscleGroupDTO.fromEntity(entity.getMuscleGroup()),
             entity.getNumberOfSets(),
             entity.getNotes(),
-            entity.getCreatedAt(),
-            entity.getUpdatedAt()
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atOffset(ZoneOffset.UTC) : null
         );
     }
 }

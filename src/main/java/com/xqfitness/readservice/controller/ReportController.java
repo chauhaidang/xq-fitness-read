@@ -1,10 +1,12 @@
 package com.xqfitness.readservice.controller;
 
+import com.xqfitness.readservice.dto.ErrorDTO;
 import com.xqfitness.readservice.dto.WeeklyReportDTO;
 import com.xqfitness.readservice.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,7 +22,7 @@ public class ReportController {
     private final ReportService reportService;
 
     @GetMapping
-    public ResponseEntity<WeeklyReportDTO> getWeeklyReport(
+    public ResponseEntity<?> getWeeklyReport(
             @PathVariable Integer routineId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStartDate
     ) {
@@ -30,10 +32,10 @@ public class ReportController {
             return ResponseEntity.ok(report);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for weekly report: routineId={}, error={}", routineId, e.getMessage());
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorDTO("NOT_FOUND", e.getMessage()));
         } catch (Exception e) {
             log.error("Error generating weekly report: routineId={}", routineId, e);
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ErrorDTO("INTERNAL_ERROR", e.getMessage()));
         }
     }
 }

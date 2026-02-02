@@ -4,7 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Data
 @NoArgsConstructor
@@ -12,11 +13,11 @@ import java.time.LocalDateTime;
 public class ErrorDTO {
     private String code;
     private String message;
-    private LocalDateTime timestamp;
+    private OffsetDateTime timestamp;
 
     public ErrorDTO(String code, String message) {
         this.code = code;
         this.message = message;
-        this.timestamp = LocalDateTime.now();
+        this.timestamp = OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

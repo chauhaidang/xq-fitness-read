@@ -2,7 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.4.1'
     id 'io.spring.dependency-management' version '1.1.4'
-    id 'xq-test' version '2.3.0'
+    id 'xq-test' version '2.3.2'
     id 'xq-dev' version '2.2.1'
 }
 
@@ -11,6 +11,7 @@ version = '1.0.0'
 
 java {
     sourceCompatibility = '17'
+    targetCompatibility = '17'
 }
 
 configurations {
@@ -48,25 +49,28 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'com.h2database:h2'
 
-    // Spring WebFlux for WebClient (needed by generated API client)
-    testImplementation 'org.springframework.boot:spring-boot-starter-webflux'
-
     // TestNG for component tests
     testImplementation 'org.testng:testng:7.8.0'
 
-    // Generated API client for component tests: source from generateApiClient (see sourceSets.test below)
-    // Run: ./gradlew generateApiClient  then  ./gradlew compileTestJava
+    // Rest Assured (needed by generated Rest Assured API client for component tests)
+    testImplementation 'io.rest-assured:rest-assured:5.4.0'
+    testImplementation 'io.rest-assured:json-path:5.4.0'
+
+    // PostgreSQL driver for component tests (DB seeding)
+    testImplementation 'org.postgresql:postgresql'
+
+    // Deps for generated Rest Assured client (compiled from generated-clients/ via sourceSets below)
+    testImplementation 'com.google.code.gson:gson:2.11.0'
+    testImplementation 'io.gsonfire:gson-fire:1.9.0'
+    testImplementation 'com.squareup.okio:okio:3.6.0'
+    testImplementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'
     testImplementation 'org.openapitools:jackson-databind-nullable:0.2.6'
 }
 
-// Force Spring Framework version to ensure headerSet() method is available
-// Spring Boot 3.4.1 uses Spring Framework 6.2.x which includes headerSet()
-// This ensures compatibility with the generated API client
 configurations.all {
     resolutionStrategy {
         force 'org.springframework:spring-core:6.2.2'
         force 'org.springframework:spring-web:6.2.2'
-        force 'org.springframework:spring-webflux:6.2.2'
         force 'org.springframework:spring-context:6.2.2'
     }
 }
@@ -94,17 +98,19 @@ task componentTest(type: Test) {
 
 apiClientGeneration {
     apiDefinitionFiles = ['read-service-api.yaml']
+    library = 'rest-assured'
 }
 
-// Compile generated API client source as part of test (from read-service-api.yaml via generateApiClient)
+// Compile generated API client source as part of test (plugin generates to generated-clients/; publish to Maven local may fail)
 sourceSets {
     test {
         java {
-            srcDir('generated-clients/read-service/src/main/java')
+            srcDir file('generated-clients/read-service/src/main/java')
         }
     }
 }
-// Generate client before compiling tests so component tests use client from api contract
+
+// Generate client before compiling tests
 tasks.named('compileTestJava') {
     dependsOn('generateApiClient')
 }

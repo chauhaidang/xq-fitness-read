@@ -5,7 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Data
 @NoArgsConstructor
@@ -14,14 +15,14 @@ public class MuscleGroupDTO {
     private Integer id;
     private String name;
     private String description;
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     public static MuscleGroupDTO fromEntity(MuscleGroup entity) {
         return new MuscleGroupDTO(
             entity.getId(),
             entity.getName(),
             entity.getDescription(),
-            entity.getCreatedAt()
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null
         );
     }
 }

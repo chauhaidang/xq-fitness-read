@@ -6,7 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -20,8 +21,8 @@ public class WorkoutDayDetailDTO {
     private Integer dayNumber;
     private String dayName;
     private String notes;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
     private List<WorkoutDaySetDTO> sets;
     private List<ExerciseDTO> exercises;
 
@@ -32,8 +33,8 @@ public class WorkoutDayDetailDTO {
             entity.getDayNumber(),
             entity.getDayName(),
             entity.getNotes(),
-            entity.getCreatedAt(),
-            entity.getUpdatedAt(),
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atOffset(ZoneOffset.UTC) : null,
             entity.getSets().stream()
                 .map(WorkoutDaySetDTO::fromEntity)
                 .collect(Collectors.toList()),
@@ -48,8 +49,8 @@ public class WorkoutDayDetailDTO {
             entity.getDayNumber(),
             entity.getDayName(),
             entity.getNotes(),
-            entity.getCreatedAt(),
-            entity.getUpdatedAt(),
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atOffset(ZoneOffset.UTC) : null,
             entity.getSets().stream()
                 .map(WorkoutDaySetDTO::fromEntity)
                 .collect(Collectors.toList()),

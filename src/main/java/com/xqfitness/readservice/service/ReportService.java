@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +82,7 @@ public class ReportService {
                     routineId,
                     weekStart,
                     true,
-                    snapshot.getCreatedAt(),
+                    snapshot.getCreatedAt() != null ? snapshot.getCreatedAt().atOffset(ZoneOffset.UTC) : null,
                     muscleGroupTotals,
                     exerciseTotals
             );
@@ -162,7 +163,7 @@ public class ReportService {
                     muscleGroupId,
                     muscleGroupName,
                     muscleGroupDescription,
-                    createdAt != null ? createdAt.toLocalDateTime() : null
+                    createdAt != null ? createdAt.toLocalDateTime().atOffset(java.time.ZoneOffset.UTC) : null
             );
 
             totals.add(new MuscleGroupTotalDTO(muscleGroupDTO, totalSets.intValue()));
