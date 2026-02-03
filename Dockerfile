@@ -1,5 +1,5 @@
-# Build stage
-FROM gradle:8.5-jdk17 AS builder
+# Build stage - use JDK base image with Gradle wrapper for version consistency
+FROM eclipse-temurin:21-jdk AS builder
 
 # Build arguments for accessing private GitHub packages
 ARG GITHUB_ACTOR
@@ -8,19 +8,22 @@ ENV GITHUB_ACTOR=${GITHUB_ACTOR}
 ENV GITHUB_TOKEN=${GITHUB_TOKEN}
 WORKDIR /app
 
-# Copy build files
-COPY build.gradle .
-COPY settings.gradle .
+# Copy Gradle wrapper and build files first (for caching)
+COPY gradlew ./
 COPY gradle ./gradle
+COPY build.gradle settings.gradle ./
 
-# Copy source code
+# Make gradlew executable and download dependencies as a separate layer
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon --console=plain
+
+# Copy source code (this layer changes most frequently)
 COPY src ./src
 
-# Build the application with GitHub credentials
-RUN gradle clean build -x test
+# Build the application (skip tests, use no-daemon for container efficiency)
+RUN ./gradlew build -x test --no-daemon --console=plain --parallel
 
 # Runtime stage
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
