@@ -2,7 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.4.1'
     id 'io.spring.dependency-management' version '1.1.4'
-    id 'xq-test' version '2.3.2'
+    id 'xq-test' version '2.3.3'
     id 'xq-dev' version '2.2.1'
 }
 
@@ -65,6 +65,7 @@ dependencies {
     testImplementation 'com.squareup.okio:okio:3.6.0'
     testImplementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'
     testImplementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+    implementation 'com.xqfitness.client:read-service-client:1.2.0'
 }
 
 configurations.all {
@@ -102,13 +103,13 @@ apiClientGeneration {
 }
 
 // Compile generated API client source as part of test (plugin generates to generated-clients/; publish to Maven local may fail)
-sourceSets {
-    test {
-        java {
-            srcDir file('generated-clients/read-service/src/main/java')
-        }
-    }
-}
+// sourceSets {
+//     test {
+//         java {
+//             srcDir file('generated-clients/read-service/src/main/java')
+//         }
+//     }
+// }
 
 // Generate client before compiling tests
 tasks.named('compileTestJava') {
