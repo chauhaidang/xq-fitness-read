@@ -6,6 +6,9 @@ import com.google.gson.reflect.TypeToken;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.config.ObjectMapperConfig;
 import io.restassured.config.RestAssuredConfig;
+import io.restassured.filter.log.LogDetail;
+import io.restassured.filter.log.RequestLoggingFilter;
+import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.response.Response;
 import org.testng.annotations.*;
 
@@ -42,7 +45,9 @@ public class ReadServiceApiComponentTest {
         config.reqSpecSupplier(() -> new RequestSpecBuilder()
                 .setBaseUri(BASE_URL)
                 .setConfig(RestAssuredConfig.config().objectMapperConfig(
-                        ObjectMapperConfig.objectMapperConfig().defaultObjectMapper(gson()))));
+                        ObjectMapperConfig.objectMapperConfig().defaultObjectMapper(gson())))
+                .addFilter(new RequestLoggingFilter(LogDetail.ALL))
+                .addFilter(new ResponseLoggingFilter(LogDetail.ALL)));
         apiClient = ApiClient.api(config);
     }
 

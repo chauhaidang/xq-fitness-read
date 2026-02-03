@@ -10,8 +10,11 @@ group = 'com.xqfitness'
 version = '1.0.0'
 
 java {
-    sourceCompatibility = '17'
-    targetCompatibility = '17'
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 configurations {
@@ -95,6 +98,12 @@ task componentTest(type: Test) {
 
     // Only run component tests
     include '**/component/**/*ApiComponentTest.class'
+
+    // Show stdout/stderr from tests (for REST Assured logging)
+    testLogging {
+        showStandardStreams = true
+        events "passed", "skipped", "failed"
+    }
 }
 
 apiClientGeneration {
