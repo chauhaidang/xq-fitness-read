@@ -68,7 +68,8 @@ dependencies {
     testImplementation 'com.squareup.okio:okio:3.6.0'
     testImplementation 'jakarta.annotation:jakarta.annotation-api:2.1.1'
     testImplementation 'org.openapitools:jackson-databind-nullable:0.2.6'
-    implementation 'com.xqfitness.client:read-service-client:1.2.0'
+    // Generated API client for component tests (published to Maven local by generateApiClient task)
+    testImplementation 'com.xqfitness.client:read-service-client:1.2.0'
 }
 
 configurations.all {
