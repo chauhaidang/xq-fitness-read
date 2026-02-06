@@ -9,3 +9,9 @@ bin/
 .DS_Store
 app.merged.yaml
 app.rendered.yaml
+
+# Environment files with credentials
+env.neon.local
+env.local
+.env
+*.env

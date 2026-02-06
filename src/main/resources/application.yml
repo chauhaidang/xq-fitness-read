@@ -2,7 +2,8 @@ spring:
   application:
     name: xq-fitness-read-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/xq_fitness
+    # SSL mode: set DB_SSL=require for Neon/cloud databases, empty for local
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/xq_fitness${DB_SSL:}
     username: ${DB_USER:xq_user}
     password: ${DB_PASSWORD:xq_password}
     driver-class-name: org.postgresql.Driver

@@ -194,25 +194,46 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
      
-      - name: Provision database
-        id: provision-db
+      - name: Resolve database connection
+        id: resolve-db
         env:
           DO_TOKEN: ${{ secrets.DO_TOKEN }}
           REGION: 'sgp1'
           APP_NAME: 'xq-fitness'
           APP_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          NEON_DATASOURCE_URL: ${{ secrets.NEON_DATASOURCE_URL }}
+          NEON_DB_USER: ${{ secrets.NEON_DB_USER }}
+          NEON_DB_PASSWORD: ${{ secrets.NEON_DB_PASSWORD }}
         run: |
-          # Provision database (idempotent - safe to run multiple times)
+          # Prefer Neon when secrets are set; otherwise provision/use DigitalOcean database
+          if [ -n "${NEON_DATASOURCE_URL:-}" ] && [ -n "${NEON_DB_USER:-}" ] && [ -n "${NEON_DB_PASSWORD:-}" ]; then
+            echo ">> Using Neon database (secrets set)"
+            echo "spring_datasource_url=${NEON_DATASOURCE_URL}" >> $GITHUB_OUTPUT
+            echo "db_user=${NEON_DB_USER}" >> $GITHUB_OUTPUT
+            echo "db_password=${NEON_DB_PASSWORD}" >> $GITHUB_OUTPUT
+            # Parse host/port/name from JDBC URL for envsubst compatibility (e.g. jdbc:postgresql://host:5432/dbname?sslmode=require)
+            if [[ "$NEON_DATASOURCE_URL" =~ jdbc:postgresql://([^:/]+):([0-9]+)/([^?]+) ]]; then
+              echo "db_host=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+              echo "db_port=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+              echo "db_name=${BASH_REMATCH[3]}" >> $GITHUB_OUTPUT
+            else
+              echo "db_host=neon" >> $GITHUB_OUTPUT
+              echo "db_port=5432" >> $GITHUB_OUTPUT
+              echo "db_name=xq_fitness" >> $GITHUB_OUTPUT
+            fi
+            echo "  User: $NEON_DB_USER"
+            echo "  Spring Datasource URL: (from NEON_DATASOURCE_URL)"
+            exit 0
+          fi
+          
+          # DigitalOcean path: provision and get connection details
+          echo ">> Provisioning/using DigitalOcean database"
           chmod +x scripts/provision-db.sh
           cd scripts/
-          # Run provision-db.sh - it will create DB if needed or use existing
-          # If user exists and password not provided, script will fail (expected)
           ./provision-db.sh 2>&1 | tee provision-output.log || {
             echo "⚠️  Provision script exited with error, checking if DB already exists..."
-            # If script failed, try to get connection details from existing DB
           }
           
-          # Get connection details by querying doctl (most reliable)
           DB_CLUSTER_NAME="${APP_NAME:-xq-fitness}-db"
           DB_CLUSTER_ID=$(doctl databases list --output json | jq -r '.[] | select(.name=="'"$DB_CLUSTER_NAME"'") | .id' | head -n1)
           
@@ -221,10 +242,7 @@ jobs:
             exit 1
           fi
           
-          # Get connection details
           CONNECTION_JSON=$(doctl databases connection "$DB_CLUSTER_ID" --output json)
-          
-          # Handle both array and object formats (same logic as provision-db.sh)
           if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
             DB_HOST=$(echo "$CONNECTION_JSON" | jq -r '.[0].host // .[0].uri // empty')
             DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.[0].port // empty')
@@ -233,12 +251,10 @@ jobs:
             DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
           fi
           
-          # If host is a URI, extract hostname from it
           if [[ "$DB_HOST" == *"@"* ]]; then
             DB_HOST=$(echo "$DB_HOST" | sed -E 's/.*@([^:]+).*/\1/')
           fi
           
-          # Fallback: try to get connection string and parse it
           if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
             if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
               CONNECTION_STRING=$(echo "$CONNECTION_JSON" | jq -r '.[0].uri // .[0].connection_string // empty')
@@ -251,17 +267,13 @@ jobs:
             fi
           fi
           
-          # Final fallback: extract from script output if still empty
           if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
             DB_HOST=$(grep -E "^  Host:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
             DB_PORT=$(grep -E "^  Port:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
           fi
           
-          # Get database and user names (from script defaults or secrets)
           DB_NAME="${APP_DB_NAME:-xq_fitness}"
           DB_USER="${APP_DB_USER:-xq_app_user}"
-          
-          # Also try to extract from script output as fallback
           if [[ -z "$DB_NAME" ]]; then
             DB_NAME=$(grep -E "^  Database:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
           fi
@@ -269,7 +281,6 @@ jobs:
             DB_USER=$(grep -E "^  User:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
           fi
           
-          # Use secrets as fallback
           DB_HOST="${DB_HOST:-${{ secrets.DB_HOST }}}"
           DB_PORT="${DB_PORT:-${{ secrets.DB_PORT }}}"
           DB_USER="${DB_USER:-${{ secrets.DB_USER }}}"
@@ -278,33 +289,22 @@ jobs:
           
           if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
             echo "Error: Could not determine all database connection details"
-            echo "DB_HOST: ${DB_HOST:-not set}"
-            echo "DB_PORT: ${DB_PORT:-not set}"
-            echo "DB_USER: ${DB_USER:-not set}"
-            echo "DB_PASSWORD: ${DB_PASSWORD:+set (hidden)}"
-            echo "DB_NAME: ${DB_NAME:-not set}"
-            echo ""
-            echo "Note: If this is the first run, ensure DB_PASSWORD secret is set after running provision-db.sh manually"
+            echo "Set NEON_DATASOURCE_URL, NEON_DB_USER, NEON_DB_PASSWORD for Neon, or provision DO DB and set DB_PASSWORD."
             exit 1
           fi
           
-          # Construct SPRING_DATASOURCE_URL for read-service (Spring Boot)
           SPRING_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
-          
-          # Output connection details for next step
           echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
           echo "db_port=$DB_PORT" >> $GITHUB_OUTPUT
           echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
           echo "db_password=$DB_PASSWORD" >> $GITHUB_OUTPUT
           echo "db_name=$DB_NAME" >> $GITHUB_OUTPUT
           echo "spring_datasource_url=$SPRING_DATASOURCE_URL" >> $GITHUB_OUTPUT
-          
-          echo "✓ Database provisioned/verified"
+          echo "✓ Database provisioned/verified (DigitalOcean)"
           echo "  Host: $DB_HOST"
           echo "  Port: $DB_PORT"
           echo "  Database: $DB_NAME"
           echo "  User: $DB_USER"
-          echo "  Spring Datasource URL: $SPRING_DATASOURCE_URL"
 
       - name: Determine image tag
         id: image-tag
@@ -325,12 +325,12 @@ jobs:
           REGION: 'sgp1'
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag || 'latest' }}
           GITHUB_REGISTRY_CREDENTIALS: ${{ env.GITHUB_OWNER }}:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          DB_HOST: ${{ steps.provision-db.outputs.db_host }}
-          DB_PORT: ${{ steps.provision-db.outputs.db_port }}
-          DB_USER: ${{ steps.provision-db.outputs.db_user }}
-          DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
-          DB_NAME: ${{ steps.provision-db.outputs.db_name }}
-          SPRING_DATASOURCE_URL: ${{ steps.provision-db.outputs.spring_datasource_url }}
+          DB_HOST: ${{ steps.resolve-db.outputs.db_host }}
+          DB_PORT: ${{ steps.resolve-db.outputs.db_port }}
+          DB_USER: ${{ steps.resolve-db.outputs.db_user }}
+          DB_PASSWORD: ${{ steps.resolve-db.outputs.db_password }}
+          DB_NAME: ${{ steps.resolve-db.outputs.db_name }}
+          SPRING_DATASOURCE_URL: ${{ steps.resolve-db.outputs.spring_datasource_url }}
         run: |
           # Export all required variables for envsubst
           export APP_NAME="${APP_NAME}"
@@ -367,7 +367,7 @@ jobs:
         env:
           APP_NAME: 'xq-fitness'
           GITHUB_REGISTRY_CREDENTIALS: ${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}
-          DB_PASSWORD: ${{ steps.provision-db.outputs.db_password }}
+          DB_PASSWORD: ${{ steps.resolve-db.outputs.db_password }}
         run: |
           set -euo pipefail
           
