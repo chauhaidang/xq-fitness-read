@@ -36,5 +36,9 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1
 
+# JVM options for 512MB container (DO basic-xs): cap heap and metaspace to avoid OOM and predictable memory
+# -Xmx256m leaves ~256MB for metaspace, threads, direct buffers, and native (HikariCP, PostgreSQL driver)
+ENV JAVA_OPTS="-Xmx256m -XX:MaxMetaspaceSize=80m -XX:+UseSerialGC"
+
 # Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

@@ -18,6 +18,10 @@ services:
       tag: ${IMAGE_TAG}
       registry_credentials: "${GITHUB_REGISTRY_CREDENTIALS}"
     envs:
+      - key: SPRING_PROFILES_ACTIVE
+        type: GENERAL
+        scope: RUN_TIME
+        value: "prod"
       - key: SERVER_PORT
         type: GENERAL
         scope: RUN_TIME

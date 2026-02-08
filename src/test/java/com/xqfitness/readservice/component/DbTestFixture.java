@@ -134,6 +134,30 @@ public final class DbTestFixture {
     }
 
     /**
+     * Insert a snapshot_exercise row for component tests (weekly report with exercise totals).
+     * Uses simplified model columns: total_reps, weight, total_sets.
+     */
+    public static Long createSnapshotExercise(Connection conn, Long snapshotWorkoutDayId, int originalExerciseId,
+                                             String exerciseName, int muscleGroupId, int totalReps, double weight, int totalSets, String notes) throws SQLException {
+        String sql = "INSERT INTO snapshot_exercises (snapshot_workout_day_id, original_exercise_id, exercise_name, muscle_group_id, total_reps, weight, total_sets, notes, created_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, snapshotWorkoutDayId);
+            stmt.setInt(2, originalExerciseId);
+            stmt.setString(3, exerciseName);
+            stmt.setInt(4, muscleGroupId);
+            stmt.setInt(5, totalReps);
+            stmt.setDouble(6, weight);
+            stmt.setInt(7, totalSets);
+            if (notes != null) stmt.setString(8, notes);
+            else stmt.setNull(8, Types.VARCHAR);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getLong("id") : null;
+            }
+        }
+    }
+
+    /**
      * Deletes a routine and all dependent rows (cascade order to satisfy FKs).
      * Caller must use the same connection/transaction as for the created data.
      */

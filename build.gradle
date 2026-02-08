@@ -112,15 +112,6 @@ apiClientGeneration {
     library = 'rest-assured'
 }
 
-// Compile generated API client source as part of test (plugin generates to generated-clients/; publish to Maven local may fail)
-// sourceSets {
-//     test {
-//         java {
-//             srcDir file('generated-clients/read-service/src/main/java')
-//         }
-//     }
-// }
-
 // Generate client before compiling tests
 tasks.named('compileTestJava') {
     dependsOn('generateApiClient')

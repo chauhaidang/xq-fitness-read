@@ -192,14 +192,27 @@ public class ReportService {
                 .getResultList();
     }
 
+    /**
+     * Build exercise totals aggregated by (exerciseName, muscleGroup).
+     * When the same exercise name appears in multiple workout days (same muscle group), totals are summed into one record.
+     */
     private List<ExerciseTotalDTO> buildExerciseTotals(List<SnapshotExercise> snapshotExercises) {
         return snapshotExercises.stream()
-                .map(se -> new ExerciseTotalDTO(
-                        se.getExerciseName(),
-                        se.getMuscleGroup() != null ? MuscleGroupDTO.fromEntity(se.getMuscleGroup()) : null,
-                        se.getTotalReps(),
-                        se.getWeight() != null ? se.getWeight() : BigDecimal.ZERO
-                ))
+                .collect(Collectors.groupingBy(se -> se.getExerciseName() + "|" + (se.getMuscleGroup() != null ? se.getMuscleGroup().getId() : 0)))
+                .values().stream()
+                .map(group -> {
+                    SnapshotExercise first = group.get(0);
+                    int totalReps = group.stream().mapToInt(SnapshotExercise::getTotalReps).sum();
+                    BigDecimal totalWeight = group.stream()
+                            .map(se -> se.getWeight() != null ? se.getWeight() : BigDecimal.ZERO)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return new ExerciseTotalDTO(
+                            first.getExerciseName(),
+                            first.getMuscleGroup() != null ? MuscleGroupDTO.fromEntity(first.getMuscleGroup()) : null,
+                            totalReps,
+                            totalWeight
+                    );
+                })
                 .collect(Collectors.toList());
     }
 
