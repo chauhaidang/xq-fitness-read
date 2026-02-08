@@ -107,6 +107,23 @@ jobs:
           xq-infra generate -f ./test-env
           xq-infra up
 
+      - name: Wait for read-service to be ready
+        run: |
+          # nginx 502 means gateway is up but backend not ready; wait for API to respond
+          BASE_URL="${API_BASE_URL:-http://localhost:8080/xq-fitness-read-service/api/v1}"
+          HEALTH_URL="${BASE_URL%/api/v1}/api/v1/actuator/health"
+          echo "Waiting for read-service at $HEALTH_URL ..."
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null "$HEALTH_URL"; then
+              echo "Read-service is ready after ${i} attempt(s)"
+              exit 0
+            fi
+            echo "Attempt $i/30: not ready, sleeping 3s"
+            sleep 3
+          done
+          echo "Read-service did not become ready in time"
+          exit 1
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
