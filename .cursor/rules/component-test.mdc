@@ -25,7 +25,7 @@ When asked to implement, fix, or update component tests, follow this workflow an
 
 ### 2. Spin Up the Test Environment with xq-cli
 
-- Install/use **xq-cli** (e.g. `xq-infra` from `@chauhaidang/xq-test-infra`): `npm install -g @chauhaidang/xq-test-infra`
+- Install/use **xq-cli** (e.g. `xq-infra` from `@chauhaidang/xq-test-infra`): `npm install -g @chauhaidang/xq-test-infra@1.0.3`
 - The test environment is defined in the **`test-env`** folder **within the service directory**.
 - From the **service directory**, run:
   - `xq-infra generate -f ./test-env`
