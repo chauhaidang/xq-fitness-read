@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'read-service-api.yaml'
+      - 'api/read-service-api.yaml'
   workflow_dispatch:
 
 
@@ -24,13 +24,13 @@ jobs:
       - name: Check if version changed
         id: check
         run: |
-          # Get current version
-          current_version=$(grep -m 1 "version:" read-service-api.yaml | sed 's/.*version: *//' | tr -d ' ')
+          # Get current version (API spec lives at api/read-service-api.yaml)
+          current_version=$(grep -m 1 "version:" api/read-service-api.yaml | sed 's/.*version: *//' | tr -d ' ')
           echo "current_version=$current_version" >> $GITHUB_OUTPUT
 
           # Get previous version (if file existed in previous commit)
-          if git show HEAD~1:read-service-api.yaml &>/dev/null; then
-            previous_version=$(git show HEAD~1:read-service-api.yaml | grep -m 1 "version:" | sed 's/.*version: *//' | tr -d ' ')
+          if git show HEAD~1:api/read-service-api.yaml &>/dev/null; then
+            previous_version=$(git show HEAD~1:api/read-service-api.yaml | grep -m 1 "version:" | sed 's/.*version: *//' | tr -d ' ')
             echo "Previous version: $previous_version"
             echo "Current version: $current_version"
 
@@ -83,8 +83,8 @@ jobs:
           # Create directory if it doesn't exist
           mkdir -p api/read-service
 
-          # Copy the API definition file
-          cp ../read-service/read-service-api.yaml api/read-service/
+          # Copy the API definition file (source: api/read-service-api.yaml in read-service repo)
+          cp ../read-service/api/read-service-api.yaml api/read-service/
 
           # Add and commit changes
           git add api/read-service/read-service-api.yaml
