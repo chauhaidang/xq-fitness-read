@@ -5,7 +5,7 @@ alerts:
   - rule: DOMAIN_FAILED
 services:
   - name: read-service
-    http_port: 8080
+    http_port: 3000
     instance_count: 1
     instance_size_slug: basic-xs
     routes:
@@ -18,28 +18,34 @@ services:
       tag: ${IMAGE_TAG}
       registry_credentials: "${GITHUB_REGISTRY_CREDENTIALS}"
     envs:
-      - key: SPRING_PROFILES_ACTIVE
+      - key: PORT
         type: GENERAL
         scope: RUN_TIME
-        value: "prod"
-      - key: SERVER_PORT
+        value: "3000"
+      - key: DB_HOST
         type: GENERAL
         scope: RUN_TIME
-        value: "8080"
-      - key: SPRING_DATASOURCE_URL
+        value: ${DB_HOST}
+      - key: DB_PORT
         type: GENERAL
         scope: RUN_TIME
-        value: ${SPRING_DATASOURCE_URL}
-      - key: SPRING_DATASOURCE_USERNAME
+        value: "${DB_PORT}"
+      - key: DB_USER
         type: GENERAL
         scope: RUN_TIME
         value: ${DB_USER}
-      - key: SPRING_DATASOURCE_PASSWORD
+      - key: DB_PASSWORD
         type: SECRET
         scope: RUN_TIME
         value: ${DB_PASSWORD}
+      - key: DB_NAME
+        type: GENERAL
+        scope: RUN_TIME
+        value: ${DB_NAME}
+      - key: DB_SSL
+        type: GENERAL
+        scope: RUN_TIME
+        value: "true"
     health_check:
-      http_path: /api/v1/actuator/health
+      http_path: /health
       initial_delay_seconds: 30
-
-

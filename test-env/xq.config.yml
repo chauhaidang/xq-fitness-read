@@ -1,6 +1,6 @@
 portRange:
-  start: 8001                  # Starting port for auto-assignment
+  start: 8001
 
-dependencies:                  # Centralized dependency groups
+dependencies:
   database:
     - xq-fitness-db

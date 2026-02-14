@@ -2,14 +2,14 @@ name: Build Test Publish Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'src/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 env:
+  XQ_TEST_INFRA_VERSION: '1.0.3'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/xq-fitness-read-service
   GITHUB_OWNER: ${{ github.repository_owner }}
@@ -20,139 +20,104 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DO_TOKEN: ${{ secrets.DO_TOKEN }}
-  
+
 jobs:
   unit-tests:
-    name: Run Tests
+    name: Run Unit Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-
-      - name: Generate api client
-        run: ./gradlew generateApiClient
-
-      - name: Run unit tests
-        run: ./gradlew test --no-daemon
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: |
-            build/reports/tests/test/
-            build/test-results/test/
-          retention-days: 7
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: build/reports/jacoco/test/html/
-          retention-days: 7
-
-  component-tests:
-    name: Component Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
           registry-url: 'https://npm.pkg.github.com/'
           scope: '@chauhaidang'
-      
+
       - name: Install global tools
         run: |
-          npm install -g @chauhaidang/xq-test-infra@1.0.3
+          npm install -g @chauhaidang/xq-test-infra@${{ env.XQ_TEST_INFRA_VERSION }}
+          npm install -g @openapitools/openapi-generator-cli
 
-      - name: build read-service
+      - name: Build service
         run: |
           chmod +x ./build-read-service.sh
           ./build-read-service.sh
 
-      - name: Start up environment
-        run: |
-          xq-infra generate -f ./test-env
-          xq-infra up
+      - name: Generate API client
+        run: npm run generate:client
 
-      - name: Wait for read-service to be ready
-        run: |
-          # nginx 502 means gateway is up but backend not ready; wait for API to respond
-          BASE_URL="${API_BASE_URL:-http://localhost:8080/xq-fitness-read-service/api/v1}"
-          HEALTH_URL="${BASE_URL%/api/v1}/api/v1/actuator/health"
-          echo "Waiting for read-service at $HEALTH_URL ..."
-          for i in $(seq 1 30); do
-            if curl -sf -o /dev/null "$HEALTH_URL"; then
-              echo "Read-service is ready after ${i} attempt(s)"
-              exit 0
-            fi
-            echo "Attempt $i/30: not ready, sleeping 3s"
-            sleep 3
-          done
-          echo "Read-service did not become ready in time"
-          exit 1
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Run unit tests
+        run: npm run test:unit
 
-      - name: Generate api client
-        run: ./gradlew generateApiClient
-
-      - name: Run component tests
-        run: ./gradlew componentTest --no-daemon
-      
-      - name: Upload component test results
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: component-test-results
+          name: test-results
           path: |
-            build/reports/tests/componentTest/
-            build/test-results/componentTest/
+            test/component/tsr/
+            coverage/
           retention-days: 7
 
-      - name: Stop test environment
+  component-tests:
+    name: Run Component Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://npm.pkg.github.com/'
+          scope: '@chauhaidang'
+
+      - name: Install global tools
+        run: |
+          npm install -g @chauhaidang/xq-test-infra@${{ env.XQ_TEST_INFRA_VERSION }}
+          npm install -g @openapitools/openapi-generator-cli
+
+      - name: Build service
+        run: |
+          chmod +x ./build-read-service.sh
+          ./build-read-service.sh
+
+      - name: Generate API client
+        run: npm run generate:client
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start up environment
+        run: xq-infra generate -f ./test-env && xq-infra up
+
+      - name: Run component tests
+        run: npm run test:component:ci
+
+      - name: Stop environment
         if: always()
         run: |
-          echo "Stopping services..."
           xq-infra logs
           xq-infra down
-          echo "Test environment stopped"
+
+      - name: Present test report
+        if: success() || failure()
+        run: cat test/component/tsr/report.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
 
   dockerize-and-deploy:
-    name: Dockerize and deploy
+    name: Build and Deploy
     needs: [unit-tests, component-tests]
     runs-on: ubuntu-latest
     permissions:
@@ -160,21 +125,17 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -183,9 +144,7 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        id: push
+      - uses: docker/build-push-action@v5
         with:
           context: ./
           file: Dockerfile
@@ -210,26 +169,35 @@ jobs:
           # Install yq for YAML manipulation
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
-     
-      - name: Resolve database connection
+
+      - name: Resolve database connection (Neon)
         id: resolve-db
         env:
-          DO_TOKEN: ${{ secrets.DO_TOKEN }}
-          REGION: 'sgp1'
-          APP_NAME: 'xq-fitness'
-          APP_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          NEON_DATASOURCE_URL: ${{ secrets.NEON_DATASOURCE_URL }}
+          NEON_DB_HOST: ${{ secrets.NEON_DB_HOST }}
+          NEON_DB_PORT: ${{ secrets.NEON_DB_PORT }}
+          NEON_DB_NAME: ${{ secrets.NEON_DB_NAME }}
           NEON_DB_USER: ${{ secrets.NEON_DB_USER }}
           NEON_DB_PASSWORD: ${{ secrets.NEON_DB_PASSWORD }}
+          NEON_DATASOURCE_URL: ${{ secrets.NEON_DATASOURCE_URL }}
         run: |
-          # Prefer Neon when secrets are set; otherwise provision/use DigitalOcean database
-          if [ -n "${NEON_DATASOURCE_URL:-}" ] && [ -n "${NEON_DB_USER:-}" ] && [ -n "${NEON_DB_PASSWORD:-}" ]; then
-            echo ">> Using Neon database (secrets set)"
-            echo "spring_datasource_url=${NEON_DATASOURCE_URL}" >> $GITHUB_OUTPUT
+          # Read-service uses DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (Neon only)
+          if [ -n "${NEON_DB_HOST:-}" ] && [ -n "${NEON_DB_PORT:-}" ] && [ -n "${NEON_DB_NAME:-}" ] && [ -n "${NEON_DB_USER:-}" ] && [ -n "${NEON_DB_PASSWORD:-}" ]; then
+            echo ">> Using Neon database (NEON_DB_* secrets)"
+            echo "db_host=${NEON_DB_HOST}" >> $GITHUB_OUTPUT
+            echo "db_port=${NEON_DB_PORT}" >> $GITHUB_OUTPUT
+            echo "db_name=${NEON_DB_NAME}" >> $GITHUB_OUTPUT
             echo "db_user=${NEON_DB_USER}" >> $GITHUB_OUTPUT
             echo "db_password=${NEON_DB_PASSWORD}" >> $GITHUB_OUTPUT
-            # Parse host/port/name from JDBC URL for envsubst compatibility (e.g. jdbc:postgresql://host:5432/dbname?sslmode=require)
+            echo "  Host: $NEON_DB_HOST  Port: $NEON_DB_PORT  DB: $NEON_DB_NAME  User: $NEON_DB_USER"
+            exit 0
+          fi
+          if [ -n "${NEON_DATASOURCE_URL:-}" ] && [ -n "${NEON_DB_USER:-}" ] && [ -n "${NEON_DB_PASSWORD:-}" ]; then
+            echo ">> Using Neon database (parsed from NEON_DATASOURCE_URL)"
             if [[ "$NEON_DATASOURCE_URL" =~ jdbc:postgresql://([^:/]+):([0-9]+)/([^?]+) ]]; then
+              echo "db_host=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+              echo "db_port=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+              echo "db_name=${BASH_REMATCH[3]}" >> $GITHUB_OUTPUT
+            elif [[ "$NEON_DATASOURCE_URL" =~ postgres://[^/]*@([^:/]+):([0-9]+)/([^?/]+) ]]; then
               echo "db_host=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
               echo "db_port=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
               echo "db_name=${BASH_REMATCH[3]}" >> $GITHUB_OUTPUT
@@ -238,96 +206,17 @@ jobs:
               echo "db_port=5432" >> $GITHUB_OUTPUT
               echo "db_name=xq_fitness" >> $GITHUB_OUTPUT
             fi
-            echo "  User: $NEON_DB_USER"
-            echo "  Spring Datasource URL: (from NEON_DATASOURCE_URL)"
+            echo "db_user=${NEON_DB_USER}" >> $GITHUB_OUTPUT
+            echo "db_password=${NEON_DB_PASSWORD}" >> $GITHUB_OUTPUT
+            echo "  User: $NEON_DB_USER (host/port/db from URL)"
             exit 0
           fi
-          
-          # DigitalOcean path: provision and get connection details
-          echo ">> Provisioning/using DigitalOcean database"
-          chmod +x scripts/provision-db.sh
-          cd scripts/
-          ./provision-db.sh 2>&1 | tee provision-output.log || {
-            echo "⚠️  Provision script exited with error, checking if DB already exists..."
-          }
-          
-          DB_CLUSTER_NAME="${APP_NAME:-xq-fitness}-db"
-          DB_CLUSTER_ID=$(doctl databases list --output json | jq -r '.[] | select(.name=="'"$DB_CLUSTER_NAME"'") | .id' | head -n1)
-          
-          if [ -z "$DB_CLUSTER_ID" ]; then
-            echo "Error: Database cluster not found. Provision script may have failed."
-            exit 1
-          fi
-          
-          CONNECTION_JSON=$(doctl databases connection "$DB_CLUSTER_ID" --output json)
-          if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            DB_HOST=$(echo "$CONNECTION_JSON" | jq -r '.[0].host // .[0].uri // empty')
-            DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.[0].port // empty')
-          else
-            DB_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // .uri // empty')
-            DB_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
-          fi
-          
-          if [[ "$DB_HOST" == *"@"* ]]; then
-            DB_HOST=$(echo "$DB_HOST" | sed -E 's/.*@([^:]+).*/\1/')
-          fi
-          
-          if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
-            if echo "$CONNECTION_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-              CONNECTION_STRING=$(echo "$CONNECTION_JSON" | jq -r '.[0].uri // .[0].connection_string // empty')
-            else
-              CONNECTION_STRING=$(echo "$CONNECTION_JSON" | jq -r '.uri // .connection_string // empty')
-            fi
-            if [[ -n "$CONNECTION_STRING" ]]; then
-              DB_HOST=$(echo "$CONNECTION_STRING" | sed -E 's/.*@([^:]+):.*/\1/')
-              DB_PORT=$(echo "$CONNECTION_STRING" | sed -E 's/.*:([0-9]+)\/.*/\1/')
-            fi
-          fi
-          
-          if [[ -z "$DB_HOST" ]] || [[ -z "$DB_PORT" ]]; then
-            DB_HOST=$(grep -E "^  Host:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
-            DB_PORT=$(grep -E "^  Port:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
-          fi
-          
-          DB_NAME="${APP_DB_NAME:-xq_fitness}"
-          DB_USER="${APP_DB_USER:-xq_app_user}"
-          if [[ -z "$DB_NAME" ]]; then
-            DB_NAME=$(grep -E "^  Database:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
-          fi
-          if [[ -z "$DB_USER" ]]; then
-            DB_USER=$(grep -E "^  User:" provision-output.log | awk '{print $2}' | tr -d '"' || echo "")
-          fi
-          
-          DB_HOST="${DB_HOST:-${{ secrets.DB_HOST }}}"
-          DB_PORT="${DB_PORT:-${{ secrets.DB_PORT }}}"
-          DB_USER="${DB_USER:-${{ secrets.DB_USER }}}"
-          DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-          DB_NAME="${DB_NAME:-${{ secrets.DB_NAME }}}"
-          
-          if [ -z "$DB_HOST" ] || [ -z "$DB_PORT" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ] || [ -z "$DB_NAME" ]; then
-            echo "Error: Could not determine all database connection details"
-            echo "Set NEON_DATASOURCE_URL, NEON_DB_USER, NEON_DB_PASSWORD for Neon, or provision DO DB and set DB_PASSWORD."
-            exit 1
-          fi
-          
-          SPRING_DATASOURCE_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
-          echo "db_host=$DB_HOST" >> $GITHUB_OUTPUT
-          echo "db_port=$DB_PORT" >> $GITHUB_OUTPUT
-          echo "db_user=$DB_USER" >> $GITHUB_OUTPUT
-          echo "db_password=$DB_PASSWORD" >> $GITHUB_OUTPUT
-          echo "db_name=$DB_NAME" >> $GITHUB_OUTPUT
-          echo "spring_datasource_url=$SPRING_DATASOURCE_URL" >> $GITHUB_OUTPUT
-          echo "✓ Database provisioned/verified (DigitalOcean)"
-          echo "  Host: $DB_HOST"
-          echo "  Port: $DB_PORT"
-          echo "  Database: $DB_NAME"
-          echo "  User: $DB_USER"
+          echo "Error: Neon database secrets not set. Configure NEON_DB_HOST, NEON_DB_PORT, NEON_DB_NAME, NEON_DB_USER, NEON_DB_PASSWORD (or NEON_DATASOURCE_URL with NEON_DB_USER and NEON_DB_PASSWORD)." >&2
+          exit 1
 
       - name: Determine image tag
         id: image-tag
         run: |
-          # Extract the latest tag from metadata (for main branch it will be 'latest')
-          # For other branches, use branch name or sha
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "tag=latest" >> $GITHUB_OUTPUT
           else
@@ -347,9 +236,7 @@ jobs:
           DB_USER: ${{ steps.resolve-db.outputs.db_user }}
           DB_PASSWORD: ${{ steps.resolve-db.outputs.db_password }}
           DB_NAME: ${{ steps.resolve-db.outputs.db_name }}
-          SPRING_DATASOURCE_URL: ${{ steps.resolve-db.outputs.spring_datasource_url }}
         run: |
-          # Export all required variables for envsubst
           export APP_NAME="${APP_NAME}"
           export REGION="${REGION}"
           export IMAGE_NAME="${IMAGE_NAME}"
@@ -359,24 +246,11 @@ jobs:
           export DB_USER="${DB_USER}"
           export DB_PASSWORD="${DB_PASSWORD}"
           export DB_NAME="${DB_NAME}"
-          
-          # Debug: show what will be substituted
           echo ">> Variables for substitution:"
-          echo "  APP_NAME: $APP_NAME"
-          echo "  REGION: $REGION"
-          echo "  IMAGE_NAME: $IMAGE_NAME"
-          echo "  IMAGE_TAG: $IMAGE_TAG"
-          echo "  DB_HOST: $DB_HOST"
-          echo "  DB_PORT: $DB_PORT"
-          echo "  DB_USER: $DB_USER"
-          echo "  DB_NAME: $DB_NAME"
-          echo ""
-          
-          # Render .do/app.yaml from template
+          echo "  APP_NAME: $APP_NAME  REGION: $REGION  IMAGE_NAME: $IMAGE_NAME  IMAGE_TAG: $IMAGE_TAG"
+          echo "  DB_HOST: $DB_HOST  DB_PORT: $DB_PORT  DB_USER: $DB_USER  DB_NAME: $DB_NAME"
           envsubst < .do/app.yaml > .do/app.rendered.yaml
-          
           echo "✓ Rendered app spec"
-          echo "Preview (first 30 lines):"
           head -n 30 .do/app.rendered.yaml
 
       - name: Merge app spec with existing services
@@ -387,17 +261,12 @@ jobs:
           DB_PASSWORD: ${{ steps.resolve-db.outputs.db_password }}
         run: |
           set -euo pipefail
-          
           if [ ! -f .do/app.rendered.yaml ]; then
             echo "Error: Rendered app spec file not found" >&2
             exit 1
           fi
-          
-          # Merge rendered spec with existing app spec (preserves other services)
           chmod +x scripts/merge-app-spec.sh
           ./scripts/merge-app-spec.sh .do/app.rendered.yaml "$APP_NAME" .do/app.merged.yaml
-          
-          # Output merged spec file path
           echo "merged_spec_file=.do/app.merged.yaml" >> $GITHUB_OUTPUT
           echo "✓ Merged app spec: .do/app.merged.yaml"
 
@@ -405,23 +274,17 @@ jobs:
         id: app-setup
         run: |
           set -euo pipefail
-          
           MERGED_SPEC="${{ steps.merge-spec.outputs.merged_spec_file }}"
-          
           if [ ! -f "$MERGED_SPEC" ]; then
             echo "Error: Merged spec file not found: $MERGED_SPEC" >&2
             exit 1
           fi
-          
-          # Update existing app
           echo "Updating existing app: $APP_ID"
           if ! doctl apps update "$APP_ID" --spec "$MERGED_SPEC" --output json >/dev/null 2>&1; then
             echo "Error updating app" >&2
             exit 1
-
-          echo "✓ Updated app: $APP_ID"
           fi
-          
+          echo "✓ Updated app: $APP_ID"
           echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
 
       - name: Deploy to App Platform

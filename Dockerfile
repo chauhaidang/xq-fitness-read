@@ -1,40 +1,37 @@
-# Build stage - use JDK base image with Gradle wrapper for version consistency
-FROM eclipse-temurin:21-jdk AS builder
+# Build stage
+FROM node:18-alpine AS builder
 
-# Build arguments for accessing private GitHub packages
-ARG GITHUB_ACTOR
-ARG GITHUB_TOKEN
-ENV GITHUB_ACTOR=${GITHUB_ACTOR}
-ENV GITHUB_TOKEN=${GITHUB_TOKEN}
 WORKDIR /app
 
-# Copy Gradle wrapper and build files first (for caching)
-COPY gradlew ./
-COPY gradle ./gradle
-COPY build.gradle settings.gradle ./
+ARG GITHUB_TOKEN
+ENV GITHUB_TOKEN=${GITHUB_TOKEN}
 
-# Make gradlew executable and download dependencies as a separate layer
-RUN chmod +x gradlew && ./gradlew dependencies --no-daemon --console=plain
+COPY package.json ./
+COPY .npmrc ./
+# Install all deps (including devDependencies for TypeScript build)
+RUN npm install --no-audit
 
-# Copy source code (this layer changes most frequently)
 COPY src ./src
+COPY tsconfig.json ./
 
-# Build the application (skip tests, use no-daemon for container efficiency)
-RUN ./gradlew build -x test --no-daemon --console=plain --parallel
+# Build TypeScript
+RUN npm run build
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy JAR from builder stage
-COPY --from=builder /app/build/libs/*.jar app.jar
+RUN apk add --no-cache dumb-init
 
-EXPOSE 8080
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/dist ./dist
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/actuator/health || exit 1
+EXPOSE 3000
 
-# Run the application (JAVA_OPTS can be set at runtime if needed)
-ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS:-} -jar app.jar"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "dist/src/index.js"]
