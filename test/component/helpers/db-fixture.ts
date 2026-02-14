@@ -1,10 +1,65 @@
 /**
  * Database fixture for read-service component tests.
- * Seeds data (routines, days, snapshots, snapshot_exercises) and cleans up.
- * Uses same DB as the service (env DB_HOST, DB_PORT, etc.).
+ * Uses DatabaseHelper from @chauhaidang/xq-test-utils; seeds data and cleans up.
+ * Call initDbFixture() in setup and closeDbFixture() in teardown.
+ *
+ * Component tests always run against local xq-infra (localhost:5432).
  */
 
-import { query } from '../../../src/config/database';
+import { DatabaseHelper, type DatabaseConfig } from './database';
+
+/** DB config for local xq-infra test environment. */
+const DB_CONFIG: DatabaseConfig = {
+  host: 'localhost',
+  port: 5432,
+  database: 'xq_fitness',
+  user: 'xq_user',
+  password: 'xq_password',
+  ssl: false,
+};
+
+let dbHelper: DatabaseHelper | null = null;
+
+function getHelper(): DatabaseHelper {
+  if (!dbHelper) {
+    throw new Error('db-fixture not initialized: call initDbFixture() in setup');
+  }
+  return dbHelper;
+}
+
+async function query(text: string, params?: unknown[]): Promise<{ rows: unknown[] }> {
+  return getHelper().query(text, params);
+}
+
+/**
+ * Initialize the fixture with a connected DatabaseHelper. Call from global setup.
+ */
+export async function initDbFixture(): Promise<void> {
+  if (dbHelper) return;
+  dbHelper = new DatabaseHelper(DB_CONFIG);
+  await dbHelper.connect();
+  const healthCheck = await dbHelper.healthCheck([
+    'workout_routines',
+    'workout_days',
+    'weekly_snapshots',
+    'snapshot_exercises',
+  ]);
+  if (!healthCheck.healthy) {
+    throw new Error(
+      `Database health check failed. Connection: ${healthCheck.connection}, Schema: ${healthCheck.schema}`
+    );
+  }
+}
+
+/**
+ * Close the DatabaseHelper. Call from global teardown.
+ */
+export async function closeDbFixture(): Promise<void> {
+  if (dbHelper) {
+    await dbHelper.disconnect();
+    dbHelper = null;
+  }
+}
 
 export function getCurrentWeekStart(): string {
   const d = new Date();

@@ -11,7 +11,7 @@
     "test:watch": "jest --watch",
     "test:unit": "jest --config jest.config.unit.js --coverage",
     "test:component": "jest --config jest.config.component.js --runInBand",
-    "test:component:local": "API_BASE_URL=http://localhost:8080/xq-fitness-read-service/api/v1 HEALTH_CHECK_URL=http://localhost:8080/xq-fitness-read-service/health DB_HOST=localhost DB_PORT=5432 DB_USER=xq_user DB_PASSWORD=xq_password DB_NAME=xq_fitness DB_SSL=false jest --config jest.config.component.js --runInBand",
+    "test:component:local": "API_BASE_URL=http://localhost:8080/xq-fitness-read-service/api/v1 HEALTH_CHECK_URL=http://localhost:8080/xq-fitness-read-service/health jest --config jest.config.component.js --runInBand",
     "test:component:watch": "jest --config jest.config.component.js --watch",
     "test:component:ci": "jest --config jest.config.component.js --runInBand --ci --reporters=default --reporters=jest-junit",
     "test:all": "npm run test:unit && npm run test:component",

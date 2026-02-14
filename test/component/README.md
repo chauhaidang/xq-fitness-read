@@ -8,7 +8,7 @@ Component tests run against the live API via the gateway (local xq-infra or CI).
 2. Generate API client: `npm run generate:client`
 3. Start test environment: `xq-infra generate -f ./test-env && xq-infra up`
 
-Tests hit the gateway at **localhost:8080**; the script `test:component:local` sets `DB_HOST=localhost` etc. so the test process (on the host) can connect to the same DB as the service for fixture data.
+Tests hit the gateway at **localhost:8080**. The database helper connects directly to the local xq-infra DB (localhost:5432, user `xq_user`, database `xq_fitness`) — no env vars needed.
 
 ## Run
 

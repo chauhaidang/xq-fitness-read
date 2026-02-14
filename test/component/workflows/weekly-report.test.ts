@@ -4,8 +4,10 @@
 
 import { logger } from '@chauhaidang/xq-common-kit';
 import * as db from '../helpers/db-fixture';
+import { ApiClient } from '../helpers/api-client';
 
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080/xq-fitness-read-service/api/v1';
+const apiClient = new ApiClient(BASE_URL);
 
 const routineIdsToClean: number[] = [];
 
@@ -25,15 +27,7 @@ describe('Component Test: Weekly Report', () => {
     const routineId = await db.createRoutine('Report No Snapshot Routine', null, true);
     routineIdsToClean.push(routineId);
 
-    const res = await fetch(`${BASE_URL}/routines/${routineId}/weekly-report`);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      routineId: number;
-      hasSnapshot: boolean;
-      snapshotCreatedAt: string | null;
-      muscleGroupTotals: { totalSets: number }[];
-      exerciseTotals: unknown[];
-    };
+    const body = await apiClient.getWeeklyReport(routineId);
     expect(body.routineId).toBe(routineId);
     expect(body.hasSnapshot).toBe(false);
     expect(body.snapshotCreatedAt).toBeNull();
@@ -43,8 +37,9 @@ describe('Component Test: Weekly Report', () => {
   });
 
   test('GET /routines/:id/weekly-report returns 404 for non-existent routine', async () => {
-    const res = await fetch(`${BASE_URL}/routines/999999/weekly-report`);
-    expect(res.status).toBe(404);
+    await expect(apiClient.getWeeklyReport(999999)).rejects.toMatchObject({
+      response: { status: 404 },
+    });
   });
 
   test('GET /routines/:id/weekly-report returns report with snapshot_exercises totals', async () => {
@@ -56,15 +51,7 @@ describe('Component Test: Weekly Report', () => {
     const snapshotDayId = await db.createSnapshotWorkoutDay(snapshotId, dayId, 1, 'Push Day', null);
     await db.createSnapshotExercise(snapshotDayId, 1, 'Bench Press', 1, 30, 135, 3, null);
 
-    const res = await fetch(`${BASE_URL}/routines/${routineId}/weekly-report`);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      routineId: number;
-      hasSnapshot: boolean;
-      snapshotCreatedAt: unknown;
-      exerciseTotals: { exerciseName: string; totalReps: number; totalWeight: number }[];
-      muscleGroupTotals: { muscleGroup: { id: number }; totalSets: number }[];
-    };
+    const body = await apiClient.getWeeklyReport(routineId);
     expect(body.routineId).toBe(routineId);
     expect(body.hasSnapshot).toBe(true);
     expect(body.snapshotCreatedAt).toBeDefined();

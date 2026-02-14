@@ -5,18 +5,15 @@
 
 import { generateTestReport } from '@chauhaidang/xq-test-utils';
 import { logger } from '@chauhaidang/xq-common-kit';
+import { closeDbFixture } from './helpers/db-fixture';
 
 export default async (): Promise<void> => {
   logger.info('🧹 Component-Teardown: Running global teardown');
 
-  // Close database connection pool to prevent Jest from hanging
+  // Close DatabaseHelper (xq-test-utils) to prevent Jest from hanging
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires -- dynamic require for optional DB teardown
-    const db = require('../../src/config/database');
-    if (db.close) {
-      await db.close();
-      logger.info('✅ Database connection pool closed');
-    }
+    await closeDbFixture();
+    logger.info('✅ Database connection pool closed');
   } catch (error) {
     logger.warn('⚠️ Could not close database pool:', error);
   }

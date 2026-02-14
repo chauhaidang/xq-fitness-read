@@ -3,8 +3,10 @@
  */
 
 import * as db from '../helpers/db-fixture';
+import { ApiClient } from '../helpers/api-client';
 
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080/xq-fitness-read-service/api/v1';
+const apiClient = new ApiClient(BASE_URL);
 
 const routineIdsToClean: number[] = [];
 
@@ -25,13 +27,12 @@ describe('Component Test: Exercises', () => {
     routineIdsToClean.push(routineId);
     const dayId = await db.createWorkoutDay(routineId, 1, 'Push Day', null);
 
-    const res = await fetch(`${BASE_URL}/exercises?workoutDayId=${dayId}`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await apiClient.getExercises(dayId);
     expect(Array.isArray(body)).toBe(true);
   });
 
   test('GET /exercises without workoutDayId returns 400', async () => {
+    // Generated client requires workoutDayId; use fetch to assert 400 when param is omitted
     const res = await fetch(`${BASE_URL}/exercises`);
     expect(res.status).toBe(400);
   });
