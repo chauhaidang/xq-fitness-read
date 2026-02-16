@@ -2,6 +2,8 @@
 
 Node.js/Express read-only service for querying workout routines, days, exercises, and weekly reports.
 
+### [Test summary report](https://chauhaidang.github.io/xq-fitness-read/)
+
 ## Setup
 
 ```bash

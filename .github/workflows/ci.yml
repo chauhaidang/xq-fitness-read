@@ -84,6 +84,11 @@ jobs:
           registry-url: 'https://npm.pkg.github.com/'
           scope: '@chauhaidang'
 
+      - name: Fetch XQ scripts
+        run: |
+          chmod +x ./download-xq-scripts.sh
+          ./download-xq-scripts.sh
+
       - name: Install global tools
         run: |
           npm install -g @chauhaidang/xq-test-infra@${{ env.XQ_TEST_INFRA_VERSION }}
@@ -115,6 +120,22 @@ jobs:
       - name: Present test report
         if: success() || failure()
         run: cat test/component/tsr/report.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+
+      - name: Generate HTML Report
+        if: success() || failure()
+        run: |
+          node scripts/scripts/generate-report.js \
+            --xml test/component/tsr/junit.xml \
+            --output index.html 
+          mkdir public
+          mv index.html public/
+
+      - name: Upload Pages Artifact
+        if: success() || failure()
+        uses: actions/upload-pages-artifact@v4
+        with:
+          name: github-pages
+          path: public
 
   dockerize-and-deploy:
     name: Build and Deploy
@@ -294,3 +315,18 @@ jobs:
           app_name: ${{ secrets.APP_NAME || 'xq-fitness' }}
           app_spec_location: ${{ steps.merge-spec.outputs.merged_spec_file }}
           print_deploy_logs: true
+
+  deploy-report:
+    if: (success() || failure()) && github.ref == 'refs/heads/main'
+    needs: component-tests
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

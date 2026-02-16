@@ -12,6 +12,7 @@ coverage
 tsr/
 dist/
 .DS_Store
+scripts/
 app.merged.yaml
 app.rendered.yaml
 
