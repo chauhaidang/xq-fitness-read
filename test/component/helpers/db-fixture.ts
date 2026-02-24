@@ -69,6 +69,18 @@ export function getCurrentWeekStart(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Returns the Monday date string (YYYY-MM-DD) for a past week.
+ * @param weeksAgo - How many weeks back from the current week (default: 1 = last week).
+ */
+export function getPreviousWeekStart(weeksAgo: number = 1): string {
+  const d = new Date();
+  const utcDay = d.getUTCDay();
+  const daysToSubtract = (utcDay === 0 ? 6 : utcDay - 1) + weeksAgo * 7;
+  d.setUTCDate(d.getUTCDate() - daysToSubtract);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function createRoutine(
   name: string,
   description: string | null,
