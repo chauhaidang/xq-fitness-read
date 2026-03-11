@@ -66,6 +66,77 @@ describe('Component Test: Weekly Report', () => {
     expect(chestTotal!.totalSets).toBe(6);
   });
 
+  test('GET /routines/:id/weekly-report calculates progressive overload against previous week', async () => {
+    const routineId = await db.createRoutine('Progressive Overload Routine', null, true);
+    routineIdsToClean.push(routineId);
+
+    const currentWeekStart = db.getCurrentWeekStart();
+    const previousWeekStart = db.getPreviousWeekStart(1);
+
+    const dayId = await db.createWorkoutDay(routineId, 1, 'Full Body', null);
+
+    // Previous week snapshot
+    const prevSnapshotId = await db.createSnapshot(routineId, previousWeekStart);
+    const prevSnapshotDayId = await db.createSnapshotWorkoutDay(prevSnapshotId, dayId, 1, 'Full Body', null);
+
+    await db.createSnapshotExercise(prevSnapshotDayId, 1, 'Bench Press', 1, 30, 135, 3, null);
+    await db.createSnapshotExercise(prevSnapshotDayId, 2, 'Squat', 3, 20, 200, 4, null);
+    await db.createSnapshotExercise(prevSnapshotDayId, 3, 'Deadlift', 4, 15, 225, 3, null);
+
+    // Current week snapshot
+    const currSnapshotId = await db.createSnapshot(routineId, currentWeekStart);
+    const currSnapshotDayId = await db.createSnapshotWorkoutDay(currSnapshotId, dayId, 1, 'Full Body', null);
+
+    // Bench Press (Reps INCREASED: 35>30, Weight DECREASED: 130<135)
+    await db.createSnapshotExercise(currSnapshotDayId, 4, 'Bench Press', 1, 35, 130, 3, null);
+    // Squat (Reps MAINTAINED: 20=20, Weight INCREASED: 210>200)
+    await db.createSnapshotExercise(currSnapshotDayId, 5, 'Squat', 3, 20, 210, 4, null);
+    // Deadlift (Reps DECREASED: 10<15, Weight MAINTAINED: 225=225)
+    await db.createSnapshotExercise(currSnapshotDayId, 6, 'Deadlift', 4, 10, 225, 3, null);
+    // Lunges (Exists only in current week -> MAINTAINED)
+    await db.createSnapshotExercise(currSnapshotDayId, 7, 'Lunges', 3, 40, 50, 4, null);
+
+    const body = await apiClient.getWeeklyReport(routineId, currentWeekStart);
+
+    expect(body.hasSnapshot).toBe(true);
+    expect(body.exerciseTotals).toHaveLength(4);
+
+    const bench = body.exerciseTotals.find((e: any) => e.exerciseName === 'Bench Press')!;
+    expect(bench.progressStatusRep).toBe('INCREASED');
+    expect(bench.progressStatusWeight).toBe('DECREASED');
+
+    const squat = body.exerciseTotals.find((e: any) => e.exerciseName === 'Squat')!;
+    expect(squat.progressStatusRep).toBe('MAINTAINED');
+    expect(squat.progressStatusWeight).toBe('INCREASED');
+
+    const deadlift = body.exerciseTotals.find((e: any) => e.exerciseName === 'Deadlift')!;
+    expect(deadlift.progressStatusRep).toBe('DECREASED');
+    expect(deadlift.progressStatusWeight).toBe('MAINTAINED');
+
+    const lunges = body.exerciseTotals.find((e: any) => e.exerciseName === 'Lunges')!;
+    expect(lunges.progressStatusRep).toBe('MAINTAINED');
+    expect(lunges.progressStatusWeight).toBe('MAINTAINED');
+  });
+
+  test('GET /routines/:id/weekly-report sets progress status to MAINTAINED without previous snapshot', async () => {
+    const routineId = await db.createRoutine('No Prev Snapshot Routine', null, true);
+    routineIdsToClean.push(routineId);
+
+    const currentWeekStart = db.getCurrentWeekStart();
+    const dayId = await db.createWorkoutDay(routineId, 1, 'Push Day', null);
+
+    const snapshotId = await db.createSnapshot(routineId, currentWeekStart);
+    const snapshotDayId = await db.createSnapshotWorkoutDay(snapshotId, dayId, 1, 'Push Day', null);
+    await db.createSnapshotExercise(snapshotDayId, 1, 'Bench Press', 1, 30, 135, 3, null);
+
+    const body = await apiClient.getWeeklyReport(routineId, currentWeekStart);
+
+    expect(body.hasSnapshot).toBe(true);
+    const bench = body.exerciseTotals.find((e: any) => e.exerciseName === 'Bench Press')!;
+    expect(bench.progressStatusRep).toBe('MAINTAINED');
+    expect(bench.progressStatusWeight).toBe('MAINTAINED');
+  });
+
   describe('weekStartDate query parameter', () => {
     test('GET /routines/:id/weekly-report with weekStartDate returns snapshot from the specified previous week', async () => {
       const previousWeekStart = db.getPreviousWeekStart(1);

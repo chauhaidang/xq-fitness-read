@@ -32,39 +32,49 @@ export async function getWeeklyReport(
 
   const weekStart = weekStartDate ?? calculateWeekStart(new Date());
 
-  const snapshotResult = await query(
-    'SELECT id, created_at FROM weekly_snapshots WHERE routine_id = $1 AND week_start_date = $2',
-    [routineId, weekStart]
-  );
+  const currentSnapshotData = await getSnapshotDataForWeek(routineId, weekStart);
 
-  if (snapshotResult.rows.length > 0) {
-    const snapshot = snapshotResult.rows[0] as { id: number; created_at: Date };
-    const snapshotWorkoutDayIds = await getSnapshotWorkoutDayIds(snapshot.id);
-    let snapshotExercises: {
-      exercise_name: string;
-      muscle_group_id: number;
-      mg_name: string;
-      mg_description: string | null;
-      mg_created_at: Date;
-      total_reps: number;
-      weight: string | number;
-      total_sets: number;
-    }[] = [];
-    if (snapshotWorkoutDayIds.length > 0) {
-      const placeholders = snapshotWorkoutDayIds.map((_, i) => `$${i + 1}`).join(',');
-      const exResult = await query(
-        `SELECT se.exercise_name, se.muscle_group_id, se.total_reps, se.weight, se.total_sets,
-                mg.name AS mg_name, mg.description AS mg_description, mg.created_at AS mg_created_at
-         FROM snapshot_exercises se
-         JOIN muscle_groups mg ON mg.id = se.muscle_group_id
-         WHERE se.snapshot_workout_day_id IN (${placeholders})
-         ORDER BY se.id`,
-        snapshotWorkoutDayIds
-      );
-      snapshotExercises = exResult.rows as typeof snapshotExercises;
+  if (currentSnapshotData) {
+    const { snapshot, snapshotExercises } = currentSnapshotData;
+    const exerciseTotals = buildExerciseTotals(snapshotExercises);
+
+    const prevDate = new Date(weekStart);
+    prevDate.setUTCDate(prevDate.getUTCDate() - 7);
+    const prevWeekStart = prevDate.toISOString().slice(0, 10);
+
+    const prevSnapshotData = await getSnapshotDataForWeek(routineId, prevWeekStart);
+    let prevExerciseTotals: ExerciseTotal[] = [];
+    if (prevSnapshotData) {
+      prevExerciseTotals = buildExerciseTotals(prevSnapshotData.snapshotExercises);
     }
 
-    const exerciseTotals = buildExerciseTotals(snapshotExercises);
+    for (const currentExercise of exerciseTotals) {
+      const prevExercise = prevExerciseTotals.find(
+        (e) => e.exerciseName === currentExercise.exerciseName && e.muscleGroup.id === currentExercise.muscleGroup.id
+      );
+
+      if (prevExercise) {
+        if (currentExercise.totalReps > prevExercise.totalReps) {
+          currentExercise.progressStatusRep = 'INCREASED';
+        } else if (currentExercise.totalReps < prevExercise.totalReps) {
+          currentExercise.progressStatusRep = 'DECREASED';
+        } else {
+          currentExercise.progressStatusRep = 'MAINTAINED';
+        }
+
+        if (currentExercise.totalWeight > prevExercise.totalWeight) {
+          currentExercise.progressStatusWeight = 'INCREASED';
+        } else if (currentExercise.totalWeight < prevExercise.totalWeight) {
+          currentExercise.progressStatusWeight = 'DECREASED';
+        } else {
+          currentExercise.progressStatusWeight = 'MAINTAINED';
+        }
+      } else {
+        currentExercise.progressStatusRep = 'MAINTAINED';
+        currentExercise.progressStatusWeight = 'MAINTAINED';
+      }
+    }
+
     const muscleGroupTotals =
       snapshotExercises.length === 0
         ? await aggregateSetsByMuscleGroup(routineId, weekStart)
@@ -89,6 +99,47 @@ export async function getWeeklyReport(
     muscleGroupTotals,
     exerciseTotals: [],
   };
+}
+
+async function getSnapshotDataForWeek(routineId: number, weekStart: string) {
+  const snapshotResult = await query(
+    'SELECT id, created_at FROM weekly_snapshots WHERE routine_id = $1 AND week_start_date = $2',
+    [routineId, weekStart]
+  );
+
+  if (snapshotResult.rows.length === 0) {
+    return null;
+  }
+
+  const snapshot = snapshotResult.rows[0] as { id: number; created_at: Date };
+  const snapshotWorkoutDayIds = await getSnapshotWorkoutDayIds(snapshot.id);
+
+  let snapshotExercises: {
+    exercise_name: string;
+    muscle_group_id: number;
+    mg_name: string;
+    mg_description: string | null;
+    mg_created_at: Date;
+    total_reps: number;
+    weight: string | number;
+    total_sets: number;
+  }[] = [];
+
+  if (snapshotWorkoutDayIds.length > 0) {
+    const placeholders = snapshotWorkoutDayIds.map((_, i) => `$${i + 1}`).join(',');
+    const exResult = await query(
+      `SELECT se.exercise_name, se.muscle_group_id, se.total_reps, se.weight, se.total_sets,
+              mg.name AS mg_name, mg.description AS mg_description, mg.created_at AS mg_created_at
+       FROM snapshot_exercises se
+       JOIN muscle_groups mg ON mg.id = se.muscle_group_id
+       WHERE se.snapshot_workout_day_id IN (${placeholders})
+       ORDER BY se.id`,
+      snapshotWorkoutDayIds
+    );
+    snapshotExercises = exResult.rows as typeof snapshotExercises;
+  }
+
+  return { snapshot, snapshotExercises };
 }
 
 async function getSnapshotWorkoutDayIds(snapshotId: number): Promise<number[]> {

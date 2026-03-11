@@ -20,7 +20,8 @@
     "lint": "eslint . --ext .ts,.js",
     "lint:fix": "eslint . --ext .ts,.js --fix",
     "generate:client": "./scripts/generate-api-client.sh read-service",
-    "clean:clients": "rm -rf generated-clients/"
+    "clean:clients": "rm -rf generated-clients/",
+    "dockerize": "./build-read-service.sh"
   },
   "keywords": [
     "api",
