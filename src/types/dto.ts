@@ -69,6 +69,8 @@ export interface ExerciseTotal {
   muscleGroup: MuscleGroup;
   totalReps: number;
   totalWeight: number;
+  progressStatusRep?: 'INCREASED' | 'DECREASED' | 'MAINTAINED' | null;
+  progressStatusWeight?: 'INCREASED' | 'DECREASED' | 'MAINTAINED' | null;
 }
 
 export interface WeeklyReportResponse {
