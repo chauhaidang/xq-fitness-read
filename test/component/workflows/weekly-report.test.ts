@@ -50,7 +50,7 @@ describe('Component Test: Weekly Report', () => {
     const snapshotId = await db.createSnapshot(routineId, weekStart);
     const snapshotDayId = await db.createSnapshotWorkoutDay(snapshotId, dayId, 1, 'Push Day', null);
     await db.createSnapshotExercise(snapshotDayId, 1, 'Bench Press', 1, 30, 135, 3, null);
-    await db.createSnapshotExercise(snapshotDayId, 2, 'Bench Press', 1, 30, 135, 3, null);
+    await db.createSnapshotExercise(snapshotDayId, 2, 'Bench Press', 1, 40, 145, 3, null);
 
     const body = await apiClient.getWeeklyReport(routineId);
     expect(body.routineId).toBe(routineId);
@@ -59,8 +59,8 @@ describe('Component Test: Weekly Report', () => {
     expect(Array.isArray(body.exerciseTotals)).toBe(true);
     const bench = body.exerciseTotals.find((e) => e.exerciseName === 'Bench Press');
     expect(bench).toBeDefined();
-    expect(bench!.totalReps).toBe(60);
-    expect(bench!.totalWeight).toBe(270);
+    expect(bench!.totalReps).toBe(40);
+    expect(bench!.totalWeight).toBe(145);
     const chestTotal = body.muscleGroupTotals?.find((t) => t.muscleGroup?.id === 1);
     expect(chestTotal).toBeDefined();
     expect(chestTotal!.totalSets).toBe(6);
