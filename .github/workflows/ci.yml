@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
-      - '.github/workflows/ci.yml'
+      - "src/**"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 env:
-  XQ_TEST_INFRA_VERSION: '1.0.3'
+  XQ_TEST_INFRA_VERSION: "1.0.3"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/xq-fitness-read-service
   GITHUB_OWNER: ${{ github.repository_owner }}
@@ -34,10 +34,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          registry-url: 'https://npm.pkg.github.com/'
-          scope: '@chauhaidang'
+          node-version: "20"
+          cache: "npm"
+          registry-url: "https://npm.pkg.github.com/"
+          scope: "@chauhaidang"
 
       - name: Install global tools
         run: |
@@ -79,10 +79,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          registry-url: 'https://npm.pkg.github.com/'
-          scope: '@chauhaidang'
+          node-version: "20"
+          cache: "npm"
+          registry-url: "https://npm.pkg.github.com/"
+          scope: "@chauhaidang"
 
       - name: Fetch XQ scripts
         run: |
@@ -248,8 +248,8 @@ jobs:
       - name: Render app spec
         id: render-spec
         env:
-          APP_NAME: 'xq-fitness'
-          REGION: 'sgp1'
+          APP_NAME: "xq-fitness"
+          REGION: "sgp1"
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag || 'latest' }}
           GITHUB_REGISTRY_CREDENTIALS: ${{ env.GITHUB_OWNER }}:${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           DB_HOST: ${{ steps.resolve-db.outputs.db_host }}
@@ -277,7 +277,7 @@ jobs:
       - name: Merge app spec with existing services
         id: merge-spec
         env:
-          APP_NAME: 'xq-fitness'
+          APP_NAME: "xq-fitness"
           GITHUB_REGISTRY_CREDENTIALS: ${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}
           DB_PASSWORD: ${{ steps.resolve-db.outputs.db_password }}
         run: |

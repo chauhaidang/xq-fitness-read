@@ -177,8 +177,8 @@ function buildExerciseTotals(
     };
     const existing = byKey.get(key);
     if (existing) {
-      existing.totalReps += row.total_reps;
-      existing.totalWeight += Number.isFinite(weight) ? weight : 0;
+      existing.totalReps = Math.max(existing.totalReps, row.total_reps);
+      existing.totalWeight = Math.max(existing.totalWeight, Number.isFinite(weight) ? weight : 0);
     } else {
       byKey.set(key, {
         name: row.exercise_name,
