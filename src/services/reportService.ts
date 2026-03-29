@@ -176,15 +176,20 @@ function buildExerciseTotals(
       createdAt: toIsoDate(row.mg_created_at),
     };
     const existing = byKey.get(key);
+    const totalWeight = Number.isFinite(weight) ? (weight as number) : 0;
     if (existing) {
-      existing.totalReps = Math.max(existing.totalReps, row.total_reps);
-      existing.totalWeight = Math.max(existing.totalWeight, Number.isFinite(weight) ? weight : 0);
+      if (totalWeight > existing.totalWeight) {
+        existing.totalWeight = totalWeight;
+        existing.totalReps = row.total_reps;
+      } else if (totalWeight === existing.totalWeight) {
+        existing.totalReps = Math.max(existing.totalReps, row.total_reps);
+      }
     } else {
       byKey.set(key, {
         name: row.exercise_name,
         muscleGroup: mg,
         totalReps: row.total_reps,
-        totalWeight: Number.isFinite(weight) ? weight : 0,
+        totalWeight,
       });
     }
   }

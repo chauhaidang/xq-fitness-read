@@ -118,6 +118,47 @@ describe('Component Test: Weekly Report', () => {
     expect(lunges.progressStatusWeight).toBe('MAINTAINED');
   });
 
+  test('GET /routines/:id/weekly-report calculates progressive overload using max values from both weeks', async () => {
+    const routineId = await db.createRoutine('Max-Value Overload Routine', null, true);
+    routineIdsToClean.push(routineId);
+    
+    const currentWeekStart = db.getCurrentWeekStart();
+    const previousWeekStart = db.getPreviousWeekStart(1);
+    
+    const dayId = await db.createWorkoutDay(routineId, 1, 'Full Body', null);
+    
+    // Previous week snapshot with multiple sessions
+    const prevSnapshotId = await db.createSnapshot(routineId, previousWeekStart);
+    const prevSnapshotDayId = await db.createSnapshotWorkoutDay(prevSnapshotId, dayId, 1, 'Full Body', null);
+    
+    // Session 1: 30 reps, 135 weight
+    await db.createSnapshotExercise(prevSnapshotDayId, 1, 'Bench Press', 1, 30, 135, 3, null);
+    // Session 2: 25 reps, 140 weight (Prev Max: Reps=30, Weight=140)
+    await db.createSnapshotExercise(prevSnapshotDayId, 2, 'Bench Press', 1, 25, 140, 3, null);
+
+    // Current week snapshot with multiple sessions
+    const currSnapshotId = await db.createSnapshot(routineId, currentWeekStart);
+    const currSnapshotDayId = await db.createSnapshotWorkoutDay(currSnapshotId, dayId, 1, 'Full Body', null);
+    
+    // Session 1: 35 reps, 130 weight
+    await db.createSnapshotExercise(currSnapshotDayId, 3, 'Bench Press', 1, 35, 130, 3, null);
+    // Session 2: 32 reps, 145 weight (Curr Max: Reps=35, Weight=145)
+    await db.createSnapshotExercise(currSnapshotDayId, 4, 'Bench Press', 1, 32, 145, 3, null);
+
+    const body = await apiClient.getWeeklyReport(routineId, currentWeekStart);
+    
+    const bench = body.exerciseTotals.find((e: any) => e.exerciseName === 'Bench Press')!;
+    // Comparison:
+    // Prev: Session 2 (140 weight > 135) wins -> Reps=25, Weight=140
+    // Curr: Session 2 (145 weight > 130) wins -> Reps=32, Weight=145
+    // Reps: Curr (32) > Prev (25) -> INCREASED
+    // Weight: Curr (145) > Prev (140) -> INCREASED
+    expect(bench.progressStatusRep).toBe('INCREASED');
+    expect(bench.progressStatusWeight).toBe('INCREASED');
+    expect(bench.totalReps).toBe(32);
+    expect(bench.totalWeight).toBe(145);
+  });
+
   test('GET /routines/:id/weekly-report sets progress status to MAINTAINED without previous snapshot', async () => {
     const routineId = await db.createRoutine('No Prev Snapshot Routine', null, true);
     routineIdsToClean.push(routineId);
