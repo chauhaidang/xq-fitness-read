@@ -25,6 +25,5 @@ npm run test:component    # Component tests (requires xq-infra up)
 | Script | Purpose |
 |--------|---------|
 | `build-read-service.sh` | Build Docker image |
-| `run-tests-do.sh` | Run component tests vs DigitalOcean (set APP_URL) |
 | `scripts/generate-api-client.sh` | Generate TypeScript client from OpenAPI |
 | `scripts/merge-app-spec.sh` | Merge service spec for DO App Platform |
