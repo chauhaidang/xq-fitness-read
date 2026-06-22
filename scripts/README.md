@@ -81,4 +81,3 @@ To use this script in other services (e.g., write-service):
 1. Copy the script to the other service's `scripts/` directory
 2. Use the same command - no need to specify service names, the script detects them automatically
 3. Ensure `yq` is installed in the workflow (see `.github/workflows/build.yml`)
-

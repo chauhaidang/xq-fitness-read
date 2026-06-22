@@ -4,7 +4,7 @@
  */
 
 import { waitForService } from '@chauhaidang/xq-test-utils';
-import { logger } from '@chauhaidang/xq-common-kit';
+import { logger } from '@chauhaidang/xq-harness-common-kit';
 import { initDbFixture, closeDbFixture } from './helpers/db-fixture';
 
 // Get base URL from environment or use default (test-env gateway entry point)

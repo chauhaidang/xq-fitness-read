@@ -7,23 +7,30 @@ Node.js/Express read-only service for querying workout routines, days, exercises
 ## Setup
 
 ```bash
-npm run generate:client   # Before npm install (client is file: dependency)
-npm install
+export GITHUB_TOKEN=your_github_packages_token
+export DOCKER_BUILDKIT=1
+corepack enable
+./scripts/generate-api-client.sh read-service
+yarn install --immutable
 ./build-read-service.sh
 ```
+
+Use Node.js 20 for local work and CI. The direct generator script is required on a clean checkout because the generated client is a `file:` dependency and does not exist before bootstrap.
 
 ## Development
 
 ```bash
-npm run dev               # Start with nodemon
-npm run test:unit         # Unit tests
-npm run test:component    # Component tests (requires xq-infra up)
+yarn dev                  # Start with nodemon
+yarn test:unit            # Unit tests
+yarn test:component       # Component tests (requires xq-infra up)
 ```
+
+`npm` is still only needed for external infrastructure tooling such as `xq-infra` in component-test setup.
 
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `build-read-service.sh` | Build Docker image |
+| Script                           | Purpose                                 |
+| -------------------------------- | --------------------------------------- |
+| `build-read-service.sh`          | Build Docker image                      |
 | `scripts/generate-api-client.sh` | Generate TypeScript client from OpenAPI |
-| `scripts/merge-app-spec.sh` | Merge service spec for DO App Platform |
+| `scripts/merge-app-spec.sh`      | Merge service spec for DO App Platform  |
