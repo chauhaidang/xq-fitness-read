@@ -2,7 +2,7 @@
  * Component Test: Health endpoint
  */
 
-import { logger } from '@chauhaidang/xq-common-kit';
+import { logger } from '@chauhaidang/xq-harness-common-kit';
 import { ApiClient } from '../helpers/api-client';
 
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080/xq-fitness-read-service/api/v1';

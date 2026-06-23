@@ -18,6 +18,7 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   moduleNameMapper: {
     '^@helpers/(.*)$': '<rootDir>/test/component/helpers/$1',
+    '^xq-fitness-read-client$': '<rootDir>/generated-clients/read-service/dist/index.js',
   },
   transform: {
     '^.+\\.ts$': [

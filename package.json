@@ -10,11 +10,12 @@
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:unit": "jest --config jest.config.unit.js --coverage",
-    "test:component": "jest --config jest.config.component.js --runInBand",
-    "test:component:local": "API_BASE_URL=http://localhost:8080/xq-fitness-read-service/api/v1 HEALTH_CHECK_URL=http://localhost:8080/xq-fitness-read-service/health jest --config jest.config.component.js --runInBand",
-    "test:component:watch": "jest --config jest.config.component.js --watch",
-    "test:component:ci": "jest --config jest.config.component.js --runInBand --ci --reporters=default --reporters=jest-junit",
-    "test:all": "npm run test:unit && npm run test:component",
+    "build:client": "tsc -p generated-clients/read-service/tsconfig.json && tsc -p generated-clients/read-service/tsconfig.esm.json",
+    "test:component": "yarn build:client && jest --config jest.config.component.js --runInBand",
+    "test:component:local": "yarn build:client && API_BASE_URL=http://localhost:8080/xq-fitness-read-service/api/v1 HEALTH_CHECK_URL=http://localhost:8080/xq-fitness-read-service/health jest --config jest.config.component.js --runInBand",
+    "test:component:watch": "yarn build:client && jest --config jest.config.component.js --watch",
+    "test:component:ci": "yarn build:client && jest --config jest.config.component.js --runInBand --ci --reporters=default --reporters=jest-junit",
+    "test:all": "yarn test:unit && yarn test:component",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
     "lint": "eslint . --ext .ts,.js",
@@ -39,7 +40,7 @@
     "pg-pool": "^3.6.1"
   },
   "devDependencies": {
-    "@chauhaidang/xq-common-kit": "1.0.12",
+    "@chauhaidang/xq-harness-common-kit": "0.1.0",
     "@chauhaidang/xq-test-utils": "^1.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -72,5 +73,6 @@
     "titleTemplate": "{title}",
     "ancestorSeparator": " › ",
     "usePathForSuiteName": "true"
-  }
+  },
+  "packageManager": "yarn@4.17.0+sha512.c2957de2f9025ab14d63b24d0d8be1f1655810e22c341042c27f7ecd017b180ec12db73d69ac366d71b304ef9f069349ce462de96f04f8f1da317f4f762c95ae"
 }

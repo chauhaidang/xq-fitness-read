@@ -2,7 +2,7 @@
  * Component tests: GET /routines, GET /routines/:id, GET /routines/:id/days
  */
 
-import { logger } from '@chauhaidang/xq-common-kit';
+import { logger } from '@chauhaidang/xq-harness-common-kit';
 import * as db from '../helpers/db-fixture';
 import { ApiClient } from '../helpers/api-client';
 

@@ -1,5 +1,10 @@
 build
 .gradle
+node_modules
+.yarn
+.npmrc
+package-lock.json
+generated-clients
 .git
 .gitignore
 README.md
