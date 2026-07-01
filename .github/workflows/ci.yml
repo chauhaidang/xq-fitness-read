@@ -1,42 +1,7 @@
 name: Build Test Publish Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'api/**'
-      - 'openapitools.json'
-      - 'scripts/**'
-      - '.do/**'
-      - 'package.json'
-      - 'yarn.lock'
-      - '.yarnrc.yml'
-      - 'jest.config.*.js'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'build-read-service.sh'
-      - 'download-xq-scripts.sh'
-      - '.github/workflows/ci.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'api/**'
-      - 'openapitools.json'
-      - 'scripts/**'
-      - '.do/**'
-      - 'package.json'
-      - 'yarn.lock'
-      - '.yarnrc.yml'
-      - 'jest.config.*.js'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - 'build-read-service.sh'
-      - 'download-xq-scripts.sh'
-      - '.github/workflows/ci.yml'
+  # read-service is decommissioned. Keep this workflow manual only for archival checks.
   workflow_dispatch:
 
 env:

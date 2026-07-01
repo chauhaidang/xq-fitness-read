@@ -1,11 +1,7 @@
 name: Sync API Definition to xq-apis
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'api/read-service-api.yaml'
+  # read-service is decommissioned. Keep API sync manual only for archival recovery.
   workflow_dispatch:
 
 

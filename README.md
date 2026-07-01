@@ -1,10 +1,14 @@
 # XQ Fitness Read Service
 
-Node.js/Express read-only service for querying workout routines, days, exercises, and weekly reports.
+Decommissioned Node.js/Express read-only service for querying workout routines, days, exercises, and weekly reports.
+
+Read APIs are now served by `write-service` at `/xq-fitness-write-service/api/v1`. This repository is kept as archived reference code only. Do not deploy it or add new API behavior here.
 
 ### [Test summary report](https://chauhaidang.github.io/xq-fitness-read/)
 
 ## Setup
+
+Only use these commands for archival investigation or local comparison. Active development belongs in `write-service`.
 
 ```bash
 export GITHUB_TOKEN=your_github_packages_token
